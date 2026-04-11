@@ -1,0 +1,32 @@
+windows:
+  short_days: 7
+  long_days: 28
+
+thresholds:
+  hard_set:
+    min_rpe: 7.0
+    intensity_fraction: 0.75   # доля от rolling best при отсутствии RPE
+  balance:
+    push_pull_target: 1.0
+    squat_hinge_target: 1.0
+    tolerance: 0.30
+    min_hard_sets_for_flag: 5
+  recovery:
+    max_hard_sets_7d:
+      squat: 12
+      hinge: 10
+      push: 16
+      pull: 18
+    tonnage_spike_ratio: 1.5
+  warmup:
+    max_fraction_of_working_weight: 0.60   # set считается warmup если вес < 60% от макс. рабочего того же упражнения
+
+llm:
+  # Default: gemma4:e4b (Effective 4B params, ~2-4s/call on M-series, 128K context).
+  # Альтернативы: gemma4:26b (MoE, 3.8B active params — чуть медленнее, заметно умнее),
+  #              gemma4:e2b (быстрее, но хуже держит RU free-text JSON),
+  #              gemma3:4b  (прошлое поколение, fallback если gemma4 не встала).
+  model: gemma4:e4b
+  base_url: http://localhost:11434
+  timeout_s: 60
+  max_retries: 1

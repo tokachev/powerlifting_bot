@@ -1,0 +1,242 @@
+# Канонический каталог упражнений. Ключ = canonical_name (snake_case, английский).
+# aliases — список вариантов, как их пишет пользователь. Матчинг case-insensitive, по
+# нормализованной форме (см. domain/catalog.py: lowercase + замена ё→е + удаление
+# пунктуации). Porting падежей — через общий корень в aliases.
+#
+# movement_pattern — один из: squat, hinge, push, pull, carry, core, accessory, unknown
+# target_group    — опционально: squat | bench | deadlift. Соревновательные SBD-движения.
+#                    Используется для КПШ-бакетов в дашборде; отсутствие = попадает в "other".
+# muscle_group    — один из: legs | chest | back | shoulders | arms | core. Prime-mover
+#                    мышечная группа для фильтра дашборда (bodybuilding-style split).
+#                    Deadlift относим к back (trap/erector/lat), romanian/hip_thrust — к legs.
+
+back_squat:
+  movement_pattern: squat
+  target_group: squat
+  muscle_group: legs
+  aliases: [присед, приседания, приседания со штангой, присед со штангой, бэк сквот, back squat]
+
+front_squat:
+  movement_pattern: squat
+  target_group: squat
+  muscle_group: legs
+  aliases: [фронт присед, фронтальный присед, фронт сквот, front squat]
+
+overhead_squat:
+  movement_pattern: squat
+  muscle_group: legs
+  aliases: [overhead squat, присед оверхед, оверхед присед, oh squat, присед над головой]
+
+bulgarian_split_squat:
+  movement_pattern: squat
+  muscle_group: legs
+  aliases: [болгарка, болгарский сплит присед, bulgarian split squat, болгарский выпад]
+
+lunge:
+  movement_pattern: squat
+  muscle_group: legs
+  aliases: [выпады, выпад, lunge, шаг-выпад]
+
+leg_press:
+  movement_pattern: squat
+  muscle_group: legs
+  aliases: [жим ногами, жим ног, leg press]
+
+leg_extension:
+  movement_pattern: accessory
+  muscle_group: legs
+  aliases: [разгибания ног, разгибание ног, разгибания голени, разгибание голени, leg extension]
+
+leg_curl:
+  movement_pattern: hinge
+  muscle_group: legs
+  aliases: [сгибания ног, сгибание ног, сгибания голени, сгибание голени, leg curl, сгиб ног]
+
+calf_raise:
+  movement_pattern: accessory
+  muscle_group: legs
+  aliases: [подъем на носки, подъемы на носки, икры, calf raise, голени]
+
+deadlift:
+  movement_pattern: hinge
+  target_group: deadlift
+  muscle_group: back
+  aliases: [становая, становая тяга, тяга становая, deadlift, дедлифт]
+
+sumo_deadlift:
+  movement_pattern: hinge
+  target_group: deadlift
+  muscle_group: back
+  aliases: [сумо, становая сумо, сумо тяга, sumo deadlift]
+
+romanian_deadlift:
+  movement_pattern: hinge
+  muscle_group: legs
+  aliases: [румынка, румынская тяга, rdl, romanian deadlift, мертвая тяга]
+
+good_morning:
+  movement_pattern: hinge
+  muscle_group: legs
+  aliases: [гуд морнинг, наклоны со штангой, good morning]
+
+hip_thrust:
+  movement_pattern: hinge
+  muscle_group: legs
+  aliases: [ягодичный мост, хип траст, hip thrust, мост со штангой]
+
+hip_abduction:
+  movement_pattern: accessory
+  muscle_group: legs
+  aliases: [отведения на ягодицы, отведение на ягодицы, отведения ног, отведение ног, hip abduction, разведения ног, разведения ног в тренажере, разведения ног в тренажёре]
+
+bench_press:
+  movement_pattern: push
+  target_group: bench
+  muscle_group: chest
+  aliases: [жим, жим лежа, жим штанги лежа, жим лёжа, bench press, бенч, жим с резиной, жим с резинкой, жим штанги лежа с резиной]
+
+incline_bench_press:
+  movement_pattern: push
+  target_group: bench
+  muscle_group: chest
+  aliases: [жим на наклонной, наклонный жим, incline bench press, жим наклонный]
+
+dumbbell_bench_press:
+  movement_pattern: push
+  muscle_group: chest
+  aliases: [жим гантелей, жим гантелей лежа, dumbbell bench press, жим гантель лёжа]
+
+overhead_press:
+  movement_pattern: push
+  muscle_group: shoulders
+  aliases: [жим стоя, армейский жим, ohp, overhead press, жим над головой, жим сидя со штангой]
+
+dumbbell_shoulder_press:
+  movement_pattern: push
+  muscle_group: shoulders
+  aliases: [жим гантелей стоя, жим гантелей сидя, dumbbell shoulder press]
+
+push_up:
+  movement_pattern: push
+  muscle_group: chest
+  aliases: [отжимания, отжимания от пола, push up, push-up, отжим]
+
+dip:
+  movement_pattern: push
+  muscle_group: chest
+  aliases: [брусья, отжимания на брусьях, dip, dips]
+
+tricep_extension:
+  movement_pattern: accessory
+  muscle_group: arms
+  aliases: [французский жим, французский с гантелями, французский жим с гантелями, разгибания на трицепс, tricep extension, разгибания трицепса, трицепс из-за головы, трицепс из за головы, трицепс из-за головы на блоке]
+
+tricep_pushdown:
+  movement_pattern: accessory
+  muscle_group: arms
+  aliases: [трицепс на блоке, разгибания на блоке, pushdown, трицепс блок]
+
+barbell_row:
+  movement_pattern: pull
+  muscle_group: back
+  aliases: [тяга штанги, тяга штанги в наклоне, тяга в наклоне, barbell row, т-штанга]
+
+dumbbell_row:
+  movement_pattern: pull
+  muscle_group: back
+  aliases: [тяга гантели, тяга гантели в наклоне, dumbbell row, тяга гантелей]
+
+seated_row:
+  movement_pattern: pull
+  muscle_group: back
+  aliases: [горизонтальная тяга, горизонтальня тяга, тяга сидя, seated row, гребная тяга]
+
+lat_pulldown:
+  movement_pattern: pull
+  muscle_group: back
+  aliases: [тяга верхнего блока, тяга блока сверху, тяга за голову, lat pulldown, вертикальная тяга, тяга в хаммере вертикальная, тяга вертикальная в хаммере]
+
+pull_up:
+  movement_pattern: pull
+  muscle_group: back
+  aliases: [подтягивания, подтягивание, pull up, pull-up, подтяги]
+
+chin_up:
+  movement_pattern: pull
+  muscle_group: back
+  aliases: [подтягивания обратным хватом, chin up, chin-up]
+
+face_pull:
+  movement_pattern: pull
+  muscle_group: shoulders
+  aliases: [face pull, фейс пул, тяга к лицу]
+
+lateral_raise:
+  movement_pattern: accessory
+  muscle_group: shoulders
+  aliases: [махи в стороны, разводки в стороны, lateral raise, махи гантелей, махи на дельты, махи дельты, махи на плечи]
+
+rear_delt_fly:
+  movement_pattern: pull
+  muscle_group: shoulders
+  aliases: [махи в наклоне, обратные разводки, rear delt fly, махи для задней дельты]
+
+dumbbell_fly:
+  movement_pattern: push
+  muscle_group: chest
+  aliases: [разводки гантелей, разводка гантелей, dumbbell fly, разводки лёжа]
+
+pec_deck:
+  movement_pattern: push
+  muscle_group: chest
+  aliases: [разведения в тренажере, разведения в тренажёре, пек дек, pec deck, бабочка, баттерфляй]
+
+bicep_curl:
+  movement_pattern: accessory
+  muscle_group: arms
+  aliases: [бицепс, подъем на бицепс, сгибания на бицепс, bicep curl, curl, бицуха, бицепс с гантелями, бицепс гантелями]
+
+hammer_curl:
+  movement_pattern: accessory
+  muscle_group: arms
+  aliases: [молотки, молоточки, hammer curl, нейтральный хват бицепс]
+
+farmer_walk:
+  movement_pattern: carry
+  muscle_group: core
+  aliases: [прогулка фермера, фермерская прогулка, farmer walk, farmers walk]
+
+plank:
+  movement_pattern: core
+  muscle_group: core
+  aliases: [планка, plank, статическая планка]
+
+ab_crunch:
+  movement_pattern: core
+  muscle_group: core
+  aliases: [скручивания, пресс, crunch, ab crunch]
+
+hanging_leg_raise:
+  movement_pattern: core
+  muscle_group: core
+  aliases: [подъем ног в висе, подъёмы ног, hanging leg raise, пресс в висе]
+
+back_extension:
+  movement_pattern: hinge
+  muscle_group: back
+  aliases: [гиперэкстензия, гиперэкстензии, back extension, гипер]
+
+cable_row:
+  movement_pattern: pull
+  muscle_group: back
+  aliases: [тяга блока, тяга нижнего блока, cable row]
+
+pullover:
+  movement_pattern: pull
+  muscle_group: back
+  aliases: [пуловер, pullover, пуловер на блоке, пуловер с гантелью, пуловер с гантелями, straight arm pulldown, straight-arm pulldown]
+
+cable_crunch:
+  movement_pattern: core
+  muscle_group: core
+  aliases: [молитва, молитва на блоке, молитва на пресс, молитва на пресс на блоке, cable crunch, молитва на блоке на пресс]

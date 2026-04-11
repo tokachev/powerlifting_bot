@@ -1,0 +1,41 @@
+"""Pydantic response schemas for the dashboard API."""
+
+from __future__ import annotations
+
+from datetime import date
+
+from pydantic import BaseModel
+
+
+class UserInfo(BaseModel):
+    id: int
+    telegram_id: int
+    display_name: str | None
+
+
+class ExerciseInfo(BaseModel):
+    canonical_name: str
+    movement_pattern: str
+    target_group: str | None
+    muscle_group: str | None
+
+
+class DashboardFiltersEcho(BaseModel):
+    user_id: int
+    since: date
+    until: date
+    muscle_groups: list[str]
+    movement_patterns: list[str]
+    target_only: bool
+
+
+class DashboardResponse(BaseModel):
+    days: list[date]
+    kpsh_by_bucket: dict[str, list[int]]
+    intensity_kg: list[float | None]
+    kpsh_by_muscle: dict[str, int]
+    kpsh_by_pattern: dict[str, int]
+    total_workouts: int
+    total_kpsh: int
+    avg_intensity_kg: float | None
+    filters: DashboardFiltersEcho

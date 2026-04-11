@@ -1,0 +1,56 @@
+# Multi-stage build for the pwrbot dashboard:
+#  1. Stage `frontend`: Node 22 builds the Vite/React SPA → /build/dist
+#  2. Stage `runtime`:  Python 3.11 + FastAPI/uvicorn, copies the built static
+#                       files from stage 1 and serves both /api/* and the SPA
+#                       on port 8000.
+
+# ---------- Stage 1: build the React SPA ----------
+FROM node:22-alpine AS frontend
+
+WORKDIR /build
+
+COPY dashboard/package.json dashboard/package-lock.json* ./
+RUN npm ci
+
+COPY dashboard/ ./
+RUN npm run build
+
+# ---------- Stage 2: Python runtime ----------
+FROM python:3.11-slim AS runtime
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    DASHBOARD_STATIC_DIR=/app/dashboard/dist \
+    PWRBOT_DB_PATH=/app/data/pwrbot.db \
+    PWRBOT_EXERCISES_PATH=/app/config/exercises.yaml \
+    PWRBOT_API_HOST=0.0.0.0 \
+    PWRBOT_API_PORT=8000
+
+RUN useradd --create-home --uid 1000 --shell /bin/bash pwrbot \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY pyproject.toml README.md ./
+COPY src/ ./src/
+COPY config/ ./config/
+
+RUN pip install --no-cache-dir -e ".[api]" \
+    && mkdir -p /app/data \
+    && chown -R pwrbot:pwrbot /app
+
+# Copy built SPA from the frontend stage
+COPY --from=frontend /build/dist /app/dashboard/dist
+
+USER pwrbot
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -fsS http://127.0.0.1:8000/health || exit 1
+
+CMD ["python", "-m", "pwrbot.api"]

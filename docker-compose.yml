@@ -1,0 +1,60 @@
+services:
+  pwrbot:
+    build: .
+    image: pwrbot:local
+    container_name: pwrbot
+    restart: unless-stopped
+
+    # TELEGRAM_TOKEN and any other overrides come from .env
+    env_file: .env
+
+    # These override whatever .env says — they must match the container's layout,
+    # not the host's.
+    environment:
+      OLLAMA_URL: http://host.docker.internal:11434
+      DB_PATH: /app/data/pwrbot.db
+      CONFIG_PATH: /app/config/settings.yaml
+      EXERCISES_PATH: /app/config/exercises.yaml
+      PROMPTS_DIR: /app/prompts
+
+    volumes:
+      - ./data:/app/data
+
+    # On Linux, host.docker.internal is not resolvable by default — this fixes it.
+    # On macOS/Windows Docker Desktop it is already provided; this line is a no-op.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  pwrbot-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    image: pwrbot-dashboard:local
+    container_name: pwrbot-dashboard
+    restart: unless-stopped
+
+    environment:
+      PWRBOT_DB_PATH: /app/data/pwrbot.db
+      PWRBOT_EXERCISES_PATH: /app/config/exercises.yaml
+      PWRBOT_API_HOST: 0.0.0.0
+      PWRBOT_API_PORT: "8000"
+      DASHBOARD_STATIC_DIR: /app/dashboard/dist
+
+    # The dashboard reads the same SQLite file the bot writes to. Local-only:
+    # bind to 127.0.0.1 so it doesn't get exposed beyond the host.
+    ports:
+      - "127.0.0.1:8000:8000"
+
+    volumes:
+      - ./data:/app/data:ro
+      - ./config:/app/config:ro
+
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+    depends_on:
+      - pwrbot

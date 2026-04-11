@@ -1,0 +1,45 @@
+# VCS
+.git/
+.gitignore
+.gitattributes
+
+# Claude / planning
+.claude/
+
+# Secrets — never into image
+.env
+.env.example
+
+# Local data — mounted as volume at runtime
+data/
+
+# Dev-only
+sandbox/
+tests/
+scripts/
+
+# Virtualenvs
+.venv/
+venv/
+
+# Python caches / build artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Docker files themselves (not needed inside image)
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
