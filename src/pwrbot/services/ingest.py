@@ -12,7 +12,8 @@ calls `finalize_pending()` to actually persist and run the analysis.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, field
 
 import aiosqlite
 from pydantic import BaseModel
@@ -24,6 +25,7 @@ from pwrbot.domain.models import WorkoutPayload
 from pwrbot.logging_setup import get_logger
 from pwrbot.parsing.normalize import to_repo_exercises
 from pwrbot.parsing.pipeline import ParseError, ParsingPipeline, UnresolvedExercise
+from pwrbot.rules.one_rm import OneRMEstimate, compute_1rm_estimates
 from pwrbot.services.analyze import AnalyzeResult, AnalyzeService
 
 log = get_logger(__name__)
@@ -44,6 +46,7 @@ class IngestResult:
     workout_id: int
     payload: WorkoutPayload | None
     analysis: AnalyzeResult | None
+    rm_estimates: list[OneRMEstimate] = field(default_factory=list)
     parse_error: str | None = None
     pending: PendingClarification | None = None
 
@@ -146,4 +149,41 @@ class IngestService:
             user_id=user_id,
             window_days=self._cfg.windows.short_days,
         )
-        return IngestResult(workout_id=workout_id, payload=payload, analysis=analysis)
+
+        rm_estimates = await self._compute_rm(conn, user_id=user_id, payload=payload)
+
+        return IngestResult(
+            workout_id=workout_id,
+            payload=payload,
+            analysis=analysis,
+            rm_estimates=rm_estimates,
+        )
+
+    async def _compute_rm(
+        self,
+        conn: aiosqlite.Connection,
+        *,
+        user_id: int,
+        payload: WorkoutPayload,
+    ) -> list[OneRMEstimate]:
+        """Compute 1RM estimates for big-3 exercises in the workout."""
+        target_exercises: list[tuple[str, str | None]] = []
+        for ex in payload.exercises:
+            if ex.canonical_name is None:
+                continue
+            entry = self._catalog.by_canonical(ex.canonical_name)
+            if entry is not None and entry.target_group is not None:
+                target_exercises.append((entry.canonical_name, entry.target_group))
+
+        if not target_exercises:
+            return []
+
+        now_ts = int(time.time())
+        day_s = 86_400
+        history = await repo.get_workouts_in_window(
+            conn,
+            user_id=user_id,
+            since_ts=now_ts - self._cfg.windows.rm_window_days * day_s,
+            until_ts=now_ts,
+        )
+        return compute_1rm_estimates(history, target_exercises)

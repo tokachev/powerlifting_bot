@@ -50,7 +50,9 @@ async def _ingest_text(
         await start_clarification(message, state, result.pending)
         return
 
-    await message.answer(format_ingest_reply(result.payload, result.analysis))
+    await message.answer(
+        format_ingest_reply(result.payload, result.analysis, result.rm_estimates)
+    )
 
 
 @router.message(Command("log"))

@@ -11,6 +11,7 @@ from aiogram.types import TelegramObject
 
 from pwrbot.services.analyze import AnalyzeService
 from pwrbot.services.ingest import IngestService
+from pwrbot.services.max_query import MaxQueryService
 
 
 class DIMiddleware(BaseMiddleware):
@@ -22,10 +23,12 @@ class DIMiddleware(BaseMiddleware):
         conn: aiosqlite.Connection,
         ingest: IngestService,
         analyze: AnalyzeService,
+        max_query_svc: MaxQueryService,
     ) -> None:
         self._conn = conn
         self._ingest = ingest
         self._analyze = analyze
+        self._max_query_svc = max_query_svc
 
     async def __call__(
         self,
@@ -36,4 +39,5 @@ class DIMiddleware(BaseMiddleware):
         data["conn"] = self._conn
         data["ingest"] = self._ingest
         data["analyze"] = self._analyze
+        data["max_query_svc"] = self._max_query_svc
         return await handler(event, data)
