@@ -13,6 +13,7 @@ from pwrbot.bot.handlers import edit as h_edit
 from pwrbot.bot.handlers import log as h_log
 from pwrbot.bot.handlers import max_query as h_max_query
 from pwrbot.bot.handlers import view as h_view
+from pwrbot.bot.handlers import weight as h_weight
 from pwrbot.bot.middleware import DIMiddleware
 from pwrbot.services.analyze import AnalyzeService
 from pwrbot.services.ingest import IngestService
@@ -38,6 +39,7 @@ def build_dispatcher(
     dp.include_router(h_analyze.router)
     dp.include_router(h_edit.router)
     dp.include_router(h_clarify.router)     # FSM state guard — must come before log
+    dp.include_router(h_weight.router)      # body weight input — must come before log
     dp.include_router(h_max_query.router)   # max question — must come before log
     dp.include_router(h_log.router)         # plain-text catch-all is last
     return dp

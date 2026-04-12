@@ -246,3 +246,73 @@ async def save_snapshot(
     )
     await conn.commit()
     return int(cursor.lastrowid)
+
+
+# ------------------------------------------------------------------ body weight
+
+
+async def upsert_body_weight(
+    conn: aiosqlite.Connection,
+    *,
+    user_id: int,
+    recorded_at: int,
+    weight_g: int,
+) -> int:
+    """Insert or update body weight for a given date (one per user per day)."""
+    cursor = await conn.execute(
+        "INSERT INTO body_weight (user_id, recorded_at, weight_g, logged_at) "
+        "VALUES (?, ?, ?, ?) "
+        "ON CONFLICT(user_id, recorded_at) DO UPDATE SET weight_g = excluded.weight_g, "
+        "logged_at = excluded.logged_at",
+        (user_id, recorded_at, weight_g, int(time.time())),
+    )
+    await conn.commit()
+    return int(cursor.lastrowid)
+
+
+async def get_latest_body_weight(
+    conn: aiosqlite.Connection, user_id: int
+) -> tuple[int, int] | None:
+    """Return (weight_g, recorded_at) of the most recent entry, or None."""
+    row = await (
+        await conn.execute(
+            "SELECT weight_g, recorded_at FROM body_weight "
+            "WHERE user_id = ? ORDER BY recorded_at DESC LIMIT 1",
+            (user_id,),
+        )
+    ).fetchone()
+    if row is None:
+        return None
+    return int(row["weight_g"]), int(row["recorded_at"])
+
+
+async def get_body_weight_at(
+    conn: aiosqlite.Connection, user_id: int, at_ts: int
+) -> int | None:
+    """Return weight_g of the entry closest to (but not after) at_ts, or None."""
+    row = await (
+        await conn.execute(
+            "SELECT weight_g FROM body_weight "
+            "WHERE user_id = ? AND recorded_at <= ? "
+            "ORDER BY recorded_at DESC LIMIT 1",
+            (user_id, at_ts),
+        )
+    ).fetchone()
+    if row is None:
+        return None
+    return int(row["weight_g"])
+
+
+async def get_body_weight_history(
+    conn: aiosqlite.Connection, *, user_id: int, since_ts: int, until_ts: int
+) -> list[tuple[int, int]]:
+    """Return list of (recorded_at, weight_g) in ascending date order."""
+    rows = await (
+        await conn.execute(
+            "SELECT recorded_at, weight_g FROM body_weight "
+            "WHERE user_id = ? AND recorded_at >= ? AND recorded_at <= ? "
+            "ORDER BY recorded_at ASC",
+            (user_id, since_ts, until_ts),
+        )
+    ).fetchall()
+    return [(int(r["recorded_at"]), int(r["weight_g"])) for r in rows]

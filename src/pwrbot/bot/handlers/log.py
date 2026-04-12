@@ -51,7 +51,9 @@ async def _ingest_text(
         return
 
     await message.answer(
-        format_ingest_reply(result.payload, result.analysis, result.rm_estimates)
+        format_ingest_reply(
+            result.payload, result.analysis, result.rm_estimates, result.body_weight_kg
+        )
     )
 
 

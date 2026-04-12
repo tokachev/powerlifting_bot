@@ -19,11 +19,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from pwrbot.api.schemas import (
+    BodyWeightEntry,
     DashboardFiltersEcho,
     DashboardResponse,
     ExerciseInfo,
     UserInfo,
 )
+from pwrbot.db import repo
 from pwrbot.db.connection import bootstrap
 from pwrbot.domain.catalog import (
     VALID_MUSCLE_GROUPS,
@@ -196,6 +198,39 @@ def create_app(catalog: Catalog, *, lifespan: bool = False) -> FastAPI:
                 target_only=target_only,
             ),
         )
+
+    @app.get("/api/body_weight", response_model=list[BodyWeightEntry])
+    async def body_weight_history(
+        request: Request,
+        user_id: Annotated[int, Query(...)],
+        since: Annotated[date | None, Query()] = None,
+        until: Annotated[date | None, Query()] = None,
+    ) -> list[BodyWeightEntry]:
+        today = datetime.now(UTC).date()
+        until_d = until or today
+        since_d = since or (until_d - timedelta(days=89))
+        if since_d > until_d:
+            raise HTTPException(status_code=400, detail="since must be <= until")
+
+        c: aiosqlite.Connection = request.app.state.conn
+        async with c.execute(
+            "SELECT id FROM users WHERE id = ?", (user_id,)
+        ) as cur:
+            if (await cur.fetchone()) is None:
+                raise HTTPException(status_code=404, detail="user not found")
+
+        rows = await repo.get_body_weight_history(
+            c, user_id=user_id,
+            since_ts=_date_to_unix_start(since_d),
+            until_ts=_date_to_unix_end(until_d),
+        )
+        return [
+            BodyWeightEntry(
+                date=datetime.fromtimestamp(ts, tz=UTC).date(),
+                weight_kg=wg / 1000.0,
+            )
+            for ts, wg in rows
+        ]
 
     # Static SPA mount in production. Must come AFTER all /api routes so that
     # /api/* keeps routing to FastAPI handlers, not to index.html.

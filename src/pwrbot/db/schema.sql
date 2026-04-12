@@ -54,3 +54,13 @@ CREATE TABLE IF NOT EXISTS analysis_snapshots (
     explanation   TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_snap_user_time ON analysis_snapshots(user_id, computed_at DESC);
+
+CREATE TABLE IF NOT EXISTS body_weight (
+    id          INTEGER PRIMARY KEY,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    recorded_at INTEGER NOT NULL,            -- unix seconds, midnight UTC of the date
+    weight_g    INTEGER NOT NULL CHECK(weight_g > 0),
+    logged_at   INTEGER NOT NULL,            -- unix seconds, when the message was sent
+    UNIQUE(user_id, recorded_at)
+);
+CREATE INDEX IF NOT EXISTS idx_bw_user_time ON body_weight(user_id, recorded_at DESC);

@@ -167,11 +167,18 @@ class MaxQueryService:
         weight_kg, reps = best
         one_rm = estimate_1rm(weight_kg, reps)
 
+        bw_str = ""
+        latest_bw = await repo.get_latest_body_weight(conn, user_id)
+        if latest_bw is not None:
+            bw_kg = latest_bw[0] / 1000.0
+            if bw_kg > 0:
+                bw_str = f" / ~{one_rm / bw_kg:.2f} BW"
+
         name = _display_name(entry.canonical_name)
         if query.reps <= 1:
             return (
                 f"Расчётный 1RM для «{name}»: "
-                f"~{_fmt_weight(one_rm)} кг "
+                f"~{_fmt_weight(one_rm)} кг{bw_str} "
                 f"(на основе {_fmt_weight(weight_kg)}×{reps})"
             )
 
@@ -179,6 +186,6 @@ class MaxQueryService:
         return (
             f"Расчётный {query.reps}RM для «{name}»: "
             f"~{_fmt_weight(n_rm)} кг "
-            f"(1RM ~{_fmt_weight(one_rm)} кг, "
+            f"(1RM ~{_fmt_weight(one_rm)} кг{bw_str}, "
             f"на основе {_fmt_weight(weight_kg)}×{reps})"
         )
