@@ -58,12 +58,20 @@ class LLMConfig(BaseModel):
     max_retries: int = 1
 
 
+class VolumeLandmark(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    mev: int
+    mav: int
+    mrv: int
+
+
 class YamlConfig(BaseModel):
     """Typed view over config/settings.yaml."""
 
     model_config = ConfigDict(frozen=True)
     windows: Windows
     thresholds: Thresholds
+    volume_landmarks: dict[str, VolumeLandmark] = Field(default_factory=dict)
     llm: LLMConfig
 
 

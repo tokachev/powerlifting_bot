@@ -23,6 +23,7 @@ from pwrbot.db import repo
 from pwrbot.domain.catalog import Catalog
 from pwrbot.domain.models import WorkoutPayload
 from pwrbot.logging_setup import get_logger
+from pwrbot.metrics.pr import DetectedPR, detect_e1rm_prs
 from pwrbot.parsing.normalize import to_repo_exercises
 from pwrbot.parsing.pipeline import ParseError, ParsingPipeline, UnresolvedExercise
 from pwrbot.rules.one_rm import OneRMEstimate, compute_1rm_estimates
@@ -47,6 +48,7 @@ class IngestResult:
     payload: WorkoutPayload | None
     analysis: AnalyzeResult | None
     rm_estimates: list[OneRMEstimate] = field(default_factory=list)
+    new_prs: list[DetectedPR] = field(default_factory=list)
     body_weight_kg: float | None = None
     parse_error: str | None = None
     pending: PendingClarification | None = None
@@ -153,6 +155,11 @@ class IngestService:
 
         rm_estimates = await self._compute_rm(conn, user_id=user_id, payload=payload)
 
+        new_prs = await self._detect_prs(
+            conn, user_id=user_id, workout_id=workout_id,
+            performed_at=performed_at, exercises=exercises,
+        )
+
         bw_kg: float | None = None
         latest_bw = await repo.get_latest_body_weight(conn, user_id)
         if latest_bw is not None:
@@ -163,6 +170,7 @@ class IngestService:
             payload=payload,
             analysis=analysis,
             rm_estimates=rm_estimates,
+            new_prs=new_prs,
             body_weight_kg=bw_kg,
         )
 
@@ -194,3 +202,51 @@ class IngestService:
             until_ts=now_ts,
         )
         return compute_1rm_estimates(history, target_exercises)
+
+    async def _detect_prs(
+        self,
+        conn: aiosqlite.Connection,
+        *,
+        user_id: int,
+        workout_id: int,
+        performed_at: int,
+        exercises: list[repo.ExerciseRow],
+    ) -> list[DetectedPR]:
+        """Detect e1RM personal records for exercises in this workout."""
+        canonical_names = {
+            ex.canonical_name
+            for ex in exercises
+            if ex.canonical_name is not None
+        }
+        if not canonical_names:
+            return []
+
+        previous_bests: dict[str, float] = {}
+        for name in canonical_names:
+            best_g = await repo.get_best_e1rm_for_exercise(
+                conn, user_id=user_id, canonical_name=name,
+            )
+            if best_g is not None:
+                previous_bests[name] = best_g / 1000.0
+
+        detected = detect_e1rm_prs(exercises, previous_bests)
+        for pr in detected:
+            await repo.insert_personal_record(
+                conn,
+                user_id=user_id,
+                canonical_name=pr.canonical_name,
+                pr_type=pr.pr_type,
+                weight_g=round(pr.weight_kg * 1000),
+                reps=pr.reps,
+                estimated_1rm_g=round(pr.estimated_1rm_kg * 1000),
+                previous_value_g=(
+                    round(pr.previous_1rm_kg * 1000)
+                    if pr.previous_1rm_kg is not None
+                    else None
+                ),
+                workout_id=workout_id,
+                achieved_at=performed_at,
+            )
+        if detected:
+            log.info("prs_detected", count=len(detected))
+        return detected

@@ -47,10 +47,12 @@ async def test_dispatcher_builds_with_all_routers(conn, yaml_config) -> None:
         ingest=ingest,
         analyze=analyzer,
         max_query_svc=max_query_svc,
+        yaml_config=yaml_config,
+        catalog=catalog,
     )
 
-    # 8 routers expected: basic, view, analyze, edit, clarify, weight, max_query, log
-    assert len(dp.sub_routers) == 8
+    # 9 routers expected: basic, view, analyze, edit, stats, clarify, weight, max_query, log
+    assert len(dp.sub_routers) == 9
 
 
 def test_format_parsed_workout_basic() -> None:

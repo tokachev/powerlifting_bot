@@ -14,6 +14,7 @@ from pwrbot.config import (
     LLMConfig,
     RecoveryThresholds,
     Thresholds,
+    VolumeLandmark,
     WarmupThresholds,
     Windows,
     YamlConfig,
@@ -57,6 +58,14 @@ def yaml_config() -> YamlConfig:
             ),
             warmup=WarmupThresholds(max_fraction_of_working_weight=0.60),
         ),
+        volume_landmarks={
+            "legs": VolumeLandmark(mev=10, mav=16, mrv=22),
+            "chest": VolumeLandmark(mev=8, mav=14, mrv=20),
+            "back": VolumeLandmark(mev=10, mav=16, mrv=22),
+            "shoulders": VolumeLandmark(mev=6, mav=12, mrv=18),
+            "arms": VolumeLandmark(mev=4, mav=10, mrv=16),
+            "core": VolumeLandmark(mev=0, mav=10, mrv=16),
+        },
         llm=LLMConfig(),
     )
 

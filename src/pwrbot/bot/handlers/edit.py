@@ -58,5 +58,8 @@ async def cmd_edit_last(
         return
     await message.answer(
         "Заменил последнюю тренировку.\n\n"
-        + format_ingest_reply(result.payload, result.analysis, result.rm_estimates)
+        + format_ingest_reply(
+            result.payload, result.analysis, result.rm_estimates,
+            result.body_weight_kg, result.new_prs,
+        )
     )

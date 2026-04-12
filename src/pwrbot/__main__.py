@@ -47,6 +47,8 @@ async def _main_async() -> None:
         ingest=ingest_svc,
         analyze=analyze_svc,
         max_query_svc=max_query_svc,
+        yaml_config=yaml_cfg,
+        catalog=catalog,
     )
 
     try:

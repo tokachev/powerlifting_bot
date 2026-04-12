@@ -44,3 +44,129 @@ class DashboardResponse(BaseModel):
     total_kpsh: int
     avg_intensity_kg: float | None
     filters: DashboardFiltersEcho
+
+
+# ------------------------------------------------------------------ e1rm trend
+
+
+class E1RMPointSchema(BaseModel):
+    date: date
+    canonical_name: str
+    estimated_1rm_kg: float
+    best_weight_kg: float
+    best_reps: int
+
+
+class E1RMTrendResponse(BaseModel):
+    points: list[E1RMPointSchema]
+
+
+# ------------------------------------------------------------------ weekly sets
+
+
+class WeeklySetsBucketSchema(BaseModel):
+    iso_week: str
+    muscle_group: str
+    hard_sets: int
+
+
+class VolumeLandmarkSchema(BaseModel):
+    mev: int
+    mav: int
+    mrv: int
+
+
+class WeeklySetsResponse(BaseModel):
+    buckets: list[WeeklySetsBucketSchema]
+    landmarks: dict[str, VolumeLandmarkSchema]
+
+
+# ------------------------------------------------------------------ tonnage trend
+
+
+class TonnageWeekSchema(BaseModel):
+    iso_week: str
+    tonnage_kg: float
+
+
+class TonnageTrendResponse(BaseModel):
+    weeks: list[TonnageWeekSchema]
+
+
+# ------------------------------------------------------------------ calendar
+
+
+class CalendarDaySchema(BaseModel):
+    date: date
+    workout_count: int
+    total_sets: int
+    total_tonnage_kg: float
+
+
+class CalendarResponse(BaseModel):
+    days: list[CalendarDaySchema]
+
+
+# ------------------------------------------------------------------ personal records
+
+
+class PersonalRecordSchema(BaseModel):
+    date: date
+    canonical_name: str
+    pr_type: str
+    weight_kg: float
+    reps: int
+    estimated_1rm_kg: float
+    previous_1rm_kg: float | None
+
+
+class PRsResponse(BaseModel):
+    records: list[PersonalRecordSchema]
+
+
+# ------------------------------------------------------------------ per-exercise detail
+
+
+class SetDetailSchema(BaseModel):
+    reps: int
+    weight_kg: float
+    rpe: float | None
+    is_warmup: bool
+    estimated_1rm_kg: float | None
+
+
+class ExerciseSessionSchema(BaseModel):
+    date: date
+    best_e1rm_kg: float
+    total_volume_kg: float
+    sets: list[SetDetailSchema]
+
+
+class PerExerciseResponse(BaseModel):
+    sessions: list[ExerciseSessionSchema]
+
+
+# ------------------------------------------------------------------ rep distribution
+
+
+class RepBucketSchema(BaseModel):
+    rep_range: str
+    set_count: int
+    rep_count: int
+
+
+class RepDistributionResponse(BaseModel):
+    buckets: list[RepBucketSchema]
+
+
+# ------------------------------------------------------------------ frequency
+
+
+class FrequencyCellSchema(BaseModel):
+    iso_week: str
+    muscle_group: str
+    sessions: int
+
+
+class FrequencyResponse(BaseModel):
+    cells: list[FrequencyCellSchema]

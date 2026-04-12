@@ -1,5 +1,18 @@
 import axios from 'axios'
-import type { DashboardQuery, DashboardResponse, ExerciseInfo, UserInfo } from './types'
+import type {
+  CalendarResponse,
+  DashboardQuery,
+  DashboardResponse,
+  E1RMTrendResponse,
+  ExerciseInfo,
+  FrequencyResponse,
+  PerExerciseResponse,
+  PRsResponse,
+  RepDistributionResponse,
+  TonnageTrendResponse,
+  UserInfo,
+  WeeklySetsResponse,
+} from './types'
 
 export const http = axios.create({
   baseURL: '',
@@ -25,5 +38,110 @@ export async function fetchDashboard(q: DashboardQuery): Promise<DashboardRespon
   for (const m of q.muscle_groups) params.append('muscle_groups', m)
   for (const m of q.movement_patterns) params.append('movement_patterns', m)
   const r = await http.get<DashboardResponse>(`/api/dashboard?${params.toString()}`)
+  return r.data
+}
+
+export async function fetchE1RMTrend(
+  userId: number,
+  exercises: string[],
+  since: string,
+  until: string,
+): Promise<E1RMTrendResponse> {
+  const params = new URLSearchParams()
+  params.append('user_id', String(userId))
+  params.append('since', since)
+  params.append('until', until)
+  for (const e of exercises) params.append('exercises', e)
+  const r = await http.get<E1RMTrendResponse>(`/api/e1rm?${params.toString()}`)
+  return r.data
+}
+
+export async function fetchWeeklySets(
+  userId: number,
+  since: string,
+  until: string,
+): Promise<WeeklySetsResponse> {
+  const params = new URLSearchParams()
+  params.append('user_id', String(userId))
+  params.append('since', since)
+  params.append('until', until)
+  const r = await http.get<WeeklySetsResponse>(`/api/weekly-sets?${params.toString()}`)
+  return r.data
+}
+
+export async function fetchTonnageTrend(
+  userId: number,
+  since: string,
+  until: string,
+): Promise<TonnageTrendResponse> {
+  const params = new URLSearchParams()
+  params.append('user_id', String(userId))
+  params.append('since', since)
+  params.append('until', until)
+  const r = await http.get<TonnageTrendResponse>(`/api/tonnage-trend?${params.toString()}`)
+  return r.data
+}
+
+export async function fetchCalendar(
+  userId: number,
+  since: string,
+  until: string,
+): Promise<CalendarResponse> {
+  const params = new URLSearchParams()
+  params.append('user_id', String(userId))
+  params.append('since', since)
+  params.append('until', until)
+  const r = await http.get<CalendarResponse>(`/api/calendar?${params.toString()}`)
+  return r.data
+}
+
+export async function fetchPRs(
+  userId: number,
+  limit: number = 20,
+): Promise<PRsResponse> {
+  const r = await http.get<PRsResponse>(`/api/prs?user_id=${userId}&limit=${limit}`)
+  return r.data
+}
+
+export async function fetchPerExercise(
+  userId: number,
+  exercise: string,
+  since: string,
+  until: string,
+): Promise<PerExerciseResponse> {
+  const params = new URLSearchParams()
+  params.append('user_id', String(userId))
+  params.append('exercise', exercise)
+  params.append('since', since)
+  params.append('until', until)
+  const r = await http.get<PerExerciseResponse>(`/api/per-exercise?${params.toString()}`)
+  return r.data
+}
+
+export async function fetchRepDistribution(
+  userId: number,
+  since: string,
+  until: string,
+  canonicalName?: string,
+): Promise<RepDistributionResponse> {
+  const params = new URLSearchParams()
+  params.append('user_id', String(userId))
+  params.append('since', since)
+  params.append('until', until)
+  if (canonicalName) params.append('canonical_name', canonicalName)
+  const r = await http.get<RepDistributionResponse>(`/api/rep-distribution?${params.toString()}`)
+  return r.data
+}
+
+export async function fetchFrequency(
+  userId: number,
+  since: string,
+  until: string,
+): Promise<FrequencyResponse> {
+  const params = new URLSearchParams()
+  params.append('user_id', String(userId))
+  params.append('since', since)
+  params.append('until', until)
+  const r = await http.get<FrequencyResponse>(`/api/frequency?${params.toString()}`)
   return r.data
 }

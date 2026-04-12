@@ -6,7 +6,21 @@ import { KpshStackedBar } from '@/components/KpshStackedBar'
 import { IntensityLine } from '@/components/IntensityLine'
 import { KpshByMuscleBar } from '@/components/KpshByMuscleBar'
 import { KpshByPatternBar } from '@/components/KpshByPatternBar'
+import { E1RMTrend } from '@/components/E1RMTrend'
+import { WeeklySets } from '@/components/WeeklySets'
+import { TonnageTrend } from '@/components/TonnageTrend'
+import { CalendarHeatmap } from '@/components/CalendarHeatmap'
+import { RecentPRs } from '@/components/RecentPRs'
+import { RepDistribution } from '@/components/RepDistribution'
+import { FrequencyHeatmap } from '@/components/FrequencyHeatmap'
 import { useDashboard } from '@/hooks/useDashboard'
+import { useE1RMTrend } from '@/hooks/useE1RMTrend'
+import { useWeeklySets } from '@/hooks/useWeeklySets'
+import { useTonnageTrend } from '@/hooks/useTonnageTrend'
+import { useCalendar } from '@/hooks/useCalendar'
+import { usePRs } from '@/hooks/usePRs'
+import { useRepDistribution } from '@/hooks/useRepDistribution'
+import { useFrequency } from '@/hooks/useFrequency'
 import { useUsers } from '@/hooks/useUsers'
 import type { DashboardQuery } from '@/api/types'
 
@@ -35,6 +49,24 @@ export default function Dashboard() {
 
   const enabled = query.user_id > 0
   const { data, isLoading, isError, error } = useDashboard(query, enabled)
+
+  const today = format(new Date(), 'yyyy-MM-dd')
+  const defaultE1RMExercises = ['back_squat', 'bench_press', 'deadlift']
+  const e1rmSince = format(subDays(new Date(), 89), 'yyyy-MM-dd')
+  const { data: e1rmData } = useE1RMTrend(
+    query.user_id, defaultE1RMExercises, e1rmSince, today,
+  )
+
+  const weeksSince = format(subDays(new Date(), 83), 'yyyy-MM-dd')
+  const { data: weeklySetsData } = useWeeklySets(query.user_id, weeksSince, today)
+  const { data: tonnageData } = useTonnageTrend(query.user_id, weeksSince, today)
+
+  const calendarSince = format(subDays(new Date(), 364), 'yyyy-MM-dd')
+  const { data: calendarData } = useCalendar(query.user_id, calendarSince, today)
+
+  const { data: prsData } = usePRs(query.user_id)
+  const { data: repDistData } = useRepDistribution(query.user_id, weeksSince, today)
+  const { data: frequencyData } = useFrequency(query.user_id, weeksSince, today)
 
   const headerInfo = useMemo(() => {
     if (!data) return null
@@ -84,6 +116,23 @@ export default function Dashboard() {
               <KpshByMuscleBar data={data} />
               <KpshByPatternBar data={data} />
             </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+              {e1rmData && <E1RMTrend data={e1rmData} />}
+              {tonnageData && <TonnageTrend data={tonnageData} />}
+            </div>
+
+            {weeklySetsData && <WeeklySets data={weeklySetsData} />}
+            {calendarData && (
+              <CalendarHeatmap data={calendarData} since={calendarSince} until={today} />
+            )}
+            {prsData && <RecentPRs data={prsData} />}
+
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+              {repDistData && <RepDistribution data={repDistData} />}
+              {frequencyData && <FrequencyHeatmap data={frequencyData} />}
+            </div>
+
             {data.total_workouts === 0 && (
               <div className="text-neutral-500 text-sm">
                 Нет тренировок за выбранный период.
