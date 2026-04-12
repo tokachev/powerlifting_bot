@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import base64
 import tempfile
 from pathlib import Path
 
 import aiosqlite
 from aiogram import F, Router
-from aiogram.types import Message
+from aiogram.types import BufferedInputFile, Message
 
 from pwrbot.db import repo
 from pwrbot.logging_setup import get_logger
@@ -53,6 +54,13 @@ async def handle_video(
             exercise_hint=exercise_hint,
             telegram_file_id=file_obj.file_id,
         )
+
+        # Send problem frame screenshots first (if any)
+        for i, frame_b64 in enumerate(result.problem_frames_b64, start=1):
+            photo_bytes = base64.b64decode(frame_b64)
+            photo = BufferedInputFile(photo_bytes, filename=f"frame_{i}.jpg")
+            caption = f"Стоп-кадр {i}: ошибка техники" if len(result.problem_frames_b64) > 1 else "Стоп-кадр: ошибка техники"
+            await message.answer_photo(photo, caption=caption)
 
         await message.answer(result.analysis_text)
 

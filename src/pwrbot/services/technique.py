@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import aiosqlite
+from pydantic import BaseModel, Field
 
 from pwrbot.db import repo
 from pwrbot.llm.ollama_client import OllamaClient
@@ -16,6 +17,13 @@ from pwrbot.video.frame_extractor import ExtractedFrames, extract_key_frames
 log = get_logger(__name__)
 
 
+class TechniqueAnalysisResponse(BaseModel):
+    """LLM structured output: analysis text + indices of problematic frames."""
+
+    analysis_text: str
+    problem_frame_indices: list[int] = Field(default_factory=list)
+
+
 @dataclass(slots=True)
 class TechniqueResult:
     analysis_text: str
@@ -23,6 +31,7 @@ class TechniqueResult:
     duration_s: float
     model_used: str
     db_id: int
+    problem_frames_b64: list[str] = field(default_factory=list)
 
 
 class TechniqueAnalysisService:
@@ -66,8 +75,15 @@ class TechniqueAnalysisService:
                 f"максимум {self._max_video_duration_s}с."
             )
 
-        analysis_text = await self._call_vision(extracted, exercise_hint)
+        llm_resp = await self._call_vision(extracted, exercise_hint)
         model_used = self._vision_model or self._ollama._model
+
+        # Extract problem frames (LLM returns 1-based indices)
+        problem_frames_b64: list[str] = []
+        for idx_1based in llm_resp.problem_frame_indices:
+            idx = idx_1based - 1  # convert to 0-based
+            if 0 <= idx < len(extracted.frames_b64):
+                problem_frames_b64.append(extracted.frames_b64[idx])
 
         db_id = await repo.insert_video_analysis(
             conn,
@@ -75,7 +91,7 @@ class TechniqueAnalysisService:
             exercise_hint=exercise_hint,
             frame_count=len(extracted.frames_b64),
             duration_s=extracted.duration_s,
-            analysis_text=analysis_text,
+            analysis_text=llm_resp.analysis_text,
             model_used=model_used,
             telegram_file_id=telegram_file_id,
         )
@@ -84,20 +100,22 @@ class TechniqueAnalysisService:
             "technique_analysis_done",
             db_id=db_id,
             frames=len(extracted.frames_b64),
+            problem_frames=len(problem_frames_b64),
             duration_s=extracted.duration_s,
         )
 
         return TechniqueResult(
-            analysis_text=analysis_text,
+            analysis_text=llm_resp.analysis_text,
             frame_count=len(extracted.frames_b64),
             duration_s=extracted.duration_s,
             model_used=model_used,
             db_id=db_id,
+            problem_frames_b64=problem_frames_b64,
         )
 
     async def _call_vision(
         self, extracted: ExtractedFrames, exercise_hint: str | None
-    ) -> str:
+    ) -> TechniqueAnalysisResponse:
         if exercise_hint:
             exercise_context = f"Упражнение: {exercise_hint}."
         else:
@@ -112,10 +130,11 @@ class TechniqueAnalysisService:
         system = system.replace("SYSTEM:", "").strip()
         user = user.strip() or tmpl
 
-        return await self._ollama.chat_vision(
+        return await self._ollama.chat_vision_json(
             system=system,
             user=user,
             images=extracted.frames_b64,
+            schema_model=TechniqueAnalysisResponse,
             model_override=self._vision_model,
         )
 
