@@ -115,3 +115,31 @@ export const E1RM_EXERCISE_LABELS: Record<string, string> = {
   bench_press: 'Жим лёжа',
   deadlift: 'Становая',
 }
+
+// ------------------------------------------------------------------ weekly sets
+
+export interface WeeklySetsBucket {
+  iso_week: string
+  muscle_group: string
+  hard_sets: number
+}
+
+export interface VolumeLandmark {
+  mev: number
+  mav: number
+  mrv: number
+}
+
+export interface WeeklySetsResponse {
+  buckets: WeeklySetsBucket[]
+  landmarks: Record<string, VolumeLandmark>
+}
+
+export const MUSCLE_GROUP_COLORS: Record<string, string> = {
+  legs: '#3b82f6',
+  chest: '#ef4444',
+  back: '#22c55e',
+  shoulders: '#f97316',
+  arms: '#a78bfa',
+  core: '#fbbf24',
+}

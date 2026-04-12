@@ -59,3 +59,23 @@ class E1RMPointSchema(BaseModel):
 
 class E1RMTrendResponse(BaseModel):
     points: list[E1RMPointSchema]
+
+
+# ------------------------------------------------------------------ weekly sets
+
+
+class WeeklySetsBucketSchema(BaseModel):
+    iso_week: str
+    muscle_group: str
+    hard_sets: int
+
+
+class VolumeLandmarkSchema(BaseModel):
+    mev: int
+    mav: int
+    mrv: int
+
+
+class WeeklySetsResponse(BaseModel):
+    buckets: list[WeeklySetsBucketSchema]
+    landmarks: dict[str, VolumeLandmarkSchema]

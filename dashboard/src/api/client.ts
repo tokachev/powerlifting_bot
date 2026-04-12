@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { DashboardQuery, DashboardResponse, E1RMTrendResponse, ExerciseInfo, UserInfo } from './types'
+import type { DashboardQuery, DashboardResponse, E1RMTrendResponse, ExerciseInfo, UserInfo, WeeklySetsResponse } from './types'
 
 export const http = axios.create({
   baseURL: '',
@@ -40,5 +40,18 @@ export async function fetchE1RMTrend(
   params.append('until', until)
   for (const e of exercises) params.append('exercises', e)
   const r = await http.get<E1RMTrendResponse>(`/api/e1rm?${params.toString()}`)
+  return r.data
+}
+
+export async function fetchWeeklySets(
+  userId: number,
+  since: string,
+  until: string,
+): Promise<WeeklySetsResponse> {
+  const params = new URLSearchParams()
+  params.append('user_id', String(userId))
+  params.append('since', since)
+  params.append('until', until)
+  const r = await http.get<WeeklySetsResponse>(`/api/weekly-sets?${params.toString()}`)
   return r.data
 }

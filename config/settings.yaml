@@ -22,6 +22,14 @@ thresholds:
   warmup:
     max_fraction_of_working_weight: 0.60   # set считается warmup если вес < 60% от макс. рабочего того же упражнения
 
+volume_landmarks:
+  legs:      { mev: 10, mav: 16, mrv: 22 }
+  chest:     { mev: 8,  mav: 14, mrv: 20 }
+  back:      { mev: 10, mav: 16, mrv: 22 }
+  shoulders: { mev: 6,  mav: 12, mrv: 18 }
+  arms:      { mev: 4,  mav: 10, mrv: 16 }
+  core:      { mev: 0,  mav: 10, mrv: 16 }
+
 llm:
   # Default: gemma4:e4b (Effective 4B params, ~2-4s/call on M-series, 128K context).
   # Альтернативы: gemma4:26b (MoE, 3.8B active params — чуть медленнее, заметно умнее),

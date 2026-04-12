@@ -23,7 +23,7 @@ class VolumeMetrics:
     tonnage_by_pattern_kg: dict[str, float] = field(default_factory=dict)
 
 
-def _rolling_best_weight_kg(
+def rolling_best_weight_kg(
     history: list[WorkoutRow], canonical_name: str | None
 ) -> float | None:
     """Return the maximum non-warmup weight seen for the given canonical across the history."""
@@ -43,7 +43,7 @@ def _rolling_best_weight_kg(
     return best
 
 
-def _is_hard_set(
+def is_hard_set(
     *,
     reps: int,
     weight_kg: float,
@@ -81,7 +81,7 @@ def compute(
     for w in workouts:
         for ex in w.exercises:
             pattern = ex.movement_pattern or "unknown"
-            rolling_best = _rolling_best_weight_kg(history, ex.canonical_name)
+            rolling_best = rolling_best_weight_kg(history, ex.canonical_name)
             for s in ex.sets:
                 if s.is_warmup:
                     continue
@@ -93,7 +93,7 @@ def compute(
                 m.total_tonnage_kg += tonnage
                 tonnage_by_pattern[pattern] += tonnage
 
-                if _is_hard_set(
+                if is_hard_set(
                     reps=s.reps,
                     weight_kg=kg,
                     rpe=s.rpe,

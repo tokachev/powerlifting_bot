@@ -26,7 +26,11 @@ from pwrbot.api.schemas import (
     E1RMTrendResponse,
     ExerciseInfo,
     UserInfo,
+    VolumeLandmarkSchema,
+    WeeklySetsBucketSchema,
+    WeeklySetsResponse,
 )
+from pwrbot.config import YamlConfig, load_yaml_config
 from pwrbot.db import repo
 from pwrbot.db.connection import bootstrap
 from pwrbot.domain.catalog import (
@@ -35,6 +39,7 @@ from pwrbot.domain.catalog import (
     load_catalog,
 )
 from pwrbot.metrics.e1rm_trend import compute_e1rm_trend
+from pwrbot.metrics.weekly_sets import compute_weekly_sets
 from pwrbot.services.reporting import FilterSpec, build_dashboard
 
 VALID_MOVEMENT_PATTERNS = frozenset(
@@ -76,11 +81,18 @@ async def _lifespan(app: FastAPI):
         await conn.close()
 
 
-def create_app(catalog: Catalog, *, lifespan: bool = False) -> FastAPI:
+def create_app(
+    catalog: Catalog,
+    *,
+    yaml_config: YamlConfig | None = None,
+    lifespan: bool = False,
+) -> FastAPI:
     """Build the dashboard FastAPI app.
 
     Args:
         catalog: pre-loaded exercise catalog (state).
+        yaml_config: loaded YAML config (thresholds, landmarks). Optional for
+            backward-compatible tests that don't need metric endpoints.
         lifespan: when True, attach the production lifespan that opens the SQLite
             connection. Tests pass False and assign `app.state.conn` themselves.
     """
@@ -90,6 +102,7 @@ def create_app(catalog: Catalog, *, lifespan: bool = False) -> FastAPI:
         lifespan=_lifespan if lifespan else None,
     )
     app.state.catalog = catalog
+    app.state.yaml_config = yaml_config
 
     app.add_middleware(
         CORSMiddleware,
@@ -243,6 +256,56 @@ def create_app(catalog: Catalog, *, lifespan: bool = False) -> FastAPI:
             ]
         )
 
+    @app.get("/api/weekly-sets", response_model=WeeklySetsResponse)
+    async def weekly_sets(
+        request: Request,
+        user_id: Annotated[int, Query(...)],
+        since: Annotated[date | None, Query()] = None,
+        until: Annotated[date | None, Query()] = None,
+    ) -> WeeklySetsResponse:
+        today = datetime.now(UTC).date()
+        until_d = until or today
+        since_d = since or (until_d - timedelta(days=83))  # 12 weeks
+        if since_d > until_d:
+            raise HTTPException(status_code=400, detail="since must be <= until")
+
+        c: aiosqlite.Connection = request.app.state.conn
+        async with c.execute(
+            "SELECT id FROM users WHERE id = ?", (user_id,)
+        ) as cur:
+            if (await cur.fetchone()) is None:
+                raise HTTPException(status_code=404, detail="user not found")
+
+        cat: Catalog = request.app.state.catalog
+        cfg: YamlConfig | None = request.app.state.yaml_config
+
+        workouts = await repo.get_workouts_in_window(
+            c,
+            user_id=user_id,
+            since_ts=_date_to_unix_start(since_d),
+            until_ts=_date_to_unix_end(until_d),
+        )
+
+        if cfg is None:
+            raise HTTPException(status_code=500, detail="yaml_config not loaded")
+
+        buckets = compute_weekly_sets(workouts, cat, cfg.thresholds)
+        landmarks = {
+            k: VolumeLandmarkSchema(mev=v.mev, mav=v.mav, mrv=v.mrv)
+            for k, v in cfg.volume_landmarks.items()
+        }
+        return WeeklySetsResponse(
+            buckets=[
+                WeeklySetsBucketSchema(
+                    iso_week=b.iso_week,
+                    muscle_group=b.muscle_group,
+                    hard_sets=b.hard_sets,
+                )
+                for b in buckets
+            ],
+            landmarks=landmarks,
+        )
+
     @app.get("/api/body_weight", response_model=list[BodyWeightEntry])
     async def body_weight_history(
         request: Request,
@@ -288,5 +351,7 @@ def create_app(catalog: Catalog, *, lifespan: bool = False) -> FastAPI:
 def build_production_app() -> FastAPI:
     """Entrypoint used by `python -m pwrbot.api`. Reads paths from env vars."""
     _, exercises_path = _settings_paths()
+    config_path = Path(os.environ.get("PWRBOT_CONFIG_PATH", "./config/settings.yaml"))
     catalog = load_catalog(exercises_path)
-    return create_app(catalog, lifespan=True)
+    yaml_config = load_yaml_config(config_path)
+    return create_app(catalog, yaml_config=yaml_config, lifespan=True)
