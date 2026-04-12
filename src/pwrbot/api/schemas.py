@@ -79,3 +79,46 @@ class VolumeLandmarkSchema(BaseModel):
 class WeeklySetsResponse(BaseModel):
     buckets: list[WeeklySetsBucketSchema]
     landmarks: dict[str, VolumeLandmarkSchema]
+
+
+# ------------------------------------------------------------------ tonnage trend
+
+
+class TonnageWeekSchema(BaseModel):
+    iso_week: str
+    tonnage_kg: float
+
+
+class TonnageTrendResponse(BaseModel):
+    weeks: list[TonnageWeekSchema]
+
+
+# ------------------------------------------------------------------ calendar
+
+
+class CalendarDaySchema(BaseModel):
+    date: date
+    workout_count: int
+    total_sets: int
+    total_tonnage_kg: float
+
+
+class CalendarResponse(BaseModel):
+    days: list[CalendarDaySchema]
+
+
+# ------------------------------------------------------------------ personal records
+
+
+class PersonalRecordSchema(BaseModel):
+    date: date
+    canonical_name: str
+    pr_type: str
+    weight_kg: float
+    reps: int
+    estimated_1rm_kg: float
+    previous_1rm_kg: float | None
+
+
+class PRsResponse(BaseModel):
+    records: list[PersonalRecordSchema]

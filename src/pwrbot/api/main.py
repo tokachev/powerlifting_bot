@@ -20,11 +20,17 @@ from fastapi.staticfiles import StaticFiles
 
 from pwrbot.api.schemas import (
     BodyWeightEntry,
+    CalendarDaySchema,
+    CalendarResponse,
     DashboardFiltersEcho,
     DashboardResponse,
     E1RMPointSchema,
     E1RMTrendResponse,
     ExerciseInfo,
+    PersonalRecordSchema,
+    PRsResponse,
+    TonnageTrendResponse,
+    TonnageWeekSchema,
     UserInfo,
     VolumeLandmarkSchema,
     WeeklySetsBucketSchema,
@@ -38,7 +44,9 @@ from pwrbot.domain.catalog import (
     Catalog,
     load_catalog,
 )
+from pwrbot.metrics.calendar import compute_calendar
 from pwrbot.metrics.e1rm_trend import compute_e1rm_trend
+from pwrbot.metrics.tonnage_trend import compute_tonnage_trend
 from pwrbot.metrics.weekly_sets import compute_weekly_sets
 from pwrbot.services.reporting import FilterSpec, build_dashboard
 
@@ -304,6 +312,112 @@ def create_app(
                 for b in buckets
             ],
             landmarks=landmarks,
+        )
+
+    @app.get("/api/tonnage-trend", response_model=TonnageTrendResponse)
+    async def tonnage_trend(
+        request: Request,
+        user_id: Annotated[int, Query(...)],
+        since: Annotated[date | None, Query()] = None,
+        until: Annotated[date | None, Query()] = None,
+    ) -> TonnageTrendResponse:
+        today = datetime.now(UTC).date()
+        until_d = until or today
+        since_d = since or (until_d - timedelta(days=83))  # 12 weeks
+        if since_d > until_d:
+            raise HTTPException(status_code=400, detail="since must be <= until")
+
+        c: aiosqlite.Connection = request.app.state.conn
+        async with c.execute(
+            "SELECT id FROM users WHERE id = ?", (user_id,)
+        ) as cur:
+            if (await cur.fetchone()) is None:
+                raise HTTPException(status_code=404, detail="user not found")
+
+        workouts = await repo.get_workouts_in_window(
+            c,
+            user_id=user_id,
+            since_ts=_date_to_unix_start(since_d),
+            until_ts=_date_to_unix_end(until_d),
+        )
+        weeks = compute_tonnage_trend(workouts)
+        return TonnageTrendResponse(
+            weeks=[
+                TonnageWeekSchema(iso_week=w.iso_week, tonnage_kg=w.tonnage_kg)
+                for w in weeks
+            ]
+        )
+
+    @app.get("/api/calendar", response_model=CalendarResponse)
+    async def calendar(
+        request: Request,
+        user_id: Annotated[int, Query(...)],
+        since: Annotated[date | None, Query()] = None,
+        until: Annotated[date | None, Query()] = None,
+    ) -> CalendarResponse:
+        today = datetime.now(UTC).date()
+        until_d = until or today
+        since_d = since or (until_d - timedelta(days=364))
+        if since_d > until_d:
+            raise HTTPException(status_code=400, detail="since must be <= until")
+
+        c: aiosqlite.Connection = request.app.state.conn
+        async with c.execute(
+            "SELECT id FROM users WHERE id = ?", (user_id,)
+        ) as cur:
+            if (await cur.fetchone()) is None:
+                raise HTTPException(status_code=404, detail="user not found")
+
+        workouts = await repo.get_workouts_in_window(
+            c,
+            user_id=user_id,
+            since_ts=_date_to_unix_start(since_d),
+            until_ts=_date_to_unix_end(until_d),
+        )
+        days = compute_calendar(workouts)
+        return CalendarResponse(
+            days=[
+                CalendarDaySchema(
+                    date=d.date,
+                    workout_count=d.workout_count,
+                    total_sets=d.total_sets,
+                    total_tonnage_kg=d.total_tonnage_kg,
+                )
+                for d in days
+            ]
+        )
+
+    @app.get("/api/prs", response_model=PRsResponse)
+    async def personal_records(
+        request: Request,
+        user_id: Annotated[int, Query(...)],
+        limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    ) -> PRsResponse:
+        c: aiosqlite.Connection = request.app.state.conn
+        async with c.execute(
+            "SELECT id FROM users WHERE id = ?", (user_id,)
+        ) as cur:
+            if (await cur.fetchone()) is None:
+                raise HTTPException(status_code=404, detail="user not found")
+
+        rows = await repo.get_personal_records(c, user_id=user_id, limit=limit)
+        return PRsResponse(
+            records=[
+                PersonalRecordSchema(
+                    date=datetime.fromtimestamp(r.achieved_at, tz=UTC).date(),
+                    canonical_name=r.canonical_name,
+                    pr_type=r.pr_type,
+                    weight_kg=r.weight_g / 1000.0,
+                    reps=r.reps,
+                    estimated_1rm_kg=r.estimated_1rm_g / 1000.0,
+                    previous_1rm_kg=(
+                        r.previous_value_g / 1000.0
+                        if r.previous_value_g is not None
+                        else None
+                    ),
+                )
+                for r in rows
+            ]
         )
 
     @app.get("/api/body_weight", response_model=list[BodyWeightEntry])

@@ -135,6 +135,46 @@ export interface WeeklySetsResponse {
   landmarks: Record<string, VolumeLandmark>
 }
 
+// ------------------------------------------------------------------ tonnage trend
+
+export interface TonnageWeek {
+  iso_week: string
+  tonnage_kg: number
+}
+
+export interface TonnageTrendResponse {
+  weeks: TonnageWeek[]
+}
+
+// ------------------------------------------------------------------ calendar
+
+export interface CalendarDay {
+  date: string
+  workout_count: number
+  total_sets: number
+  total_tonnage_kg: number
+}
+
+export interface CalendarResponse {
+  days: CalendarDay[]
+}
+
+// ------------------------------------------------------------------ personal records
+
+export interface PersonalRecord {
+  date: string
+  canonical_name: string
+  pr_type: string
+  weight_kg: number
+  reps: number
+  estimated_1rm_kg: number
+  previous_1rm_kg: number | null
+}
+
+export interface PRsResponse {
+  records: PersonalRecord[]
+}
+
 export const MUSCLE_GROUP_COLORS: Record<string, string> = {
   legs: '#3b82f6',
   chest: '#ef4444',

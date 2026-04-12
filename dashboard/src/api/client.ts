@@ -1,5 +1,15 @@
 import axios from 'axios'
-import type { DashboardQuery, DashboardResponse, E1RMTrendResponse, ExerciseInfo, UserInfo, WeeklySetsResponse } from './types'
+import type {
+  CalendarResponse,
+  DashboardQuery,
+  DashboardResponse,
+  E1RMTrendResponse,
+  ExerciseInfo,
+  PRsResponse,
+  TonnageTrendResponse,
+  UserInfo,
+  WeeklySetsResponse,
+} from './types'
 
 export const http = axios.create({
   baseURL: '',
@@ -53,5 +63,39 @@ export async function fetchWeeklySets(
   params.append('since', since)
   params.append('until', until)
   const r = await http.get<WeeklySetsResponse>(`/api/weekly-sets?${params.toString()}`)
+  return r.data
+}
+
+export async function fetchTonnageTrend(
+  userId: number,
+  since: string,
+  until: string,
+): Promise<TonnageTrendResponse> {
+  const params = new URLSearchParams()
+  params.append('user_id', String(userId))
+  params.append('since', since)
+  params.append('until', until)
+  const r = await http.get<TonnageTrendResponse>(`/api/tonnage-trend?${params.toString()}`)
+  return r.data
+}
+
+export async function fetchCalendar(
+  userId: number,
+  since: string,
+  until: string,
+): Promise<CalendarResponse> {
+  const params = new URLSearchParams()
+  params.append('user_id', String(userId))
+  params.append('since', since)
+  params.append('until', until)
+  const r = await http.get<CalendarResponse>(`/api/calendar?${params.toString()}`)
+  return r.data
+}
+
+export async function fetchPRs(
+  userId: number,
+  limit: number = 20,
+): Promise<PRsResponse> {
+  const r = await http.get<PRsResponse>(`/api/prs?user_id=${userId}&limit=${limit}`)
   return r.data
 }
