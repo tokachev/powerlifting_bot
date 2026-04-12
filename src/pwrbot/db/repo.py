@@ -316,3 +316,119 @@ async def get_body_weight_history(
         )
     ).fetchall()
     return [(int(r["recorded_at"]), int(r["weight_g"])) for r in rows]
+
+
+# ------------------------------------------------------------------ personal records
+
+
+@dataclass(slots=True)
+class PersonalRecordRow:
+    id: int
+    user_id: int
+    canonical_name: str
+    pr_type: str
+    weight_g: int
+    reps: int
+    estimated_1rm_g: int
+    previous_value_g: int | None
+    workout_id: int
+    achieved_at: int
+
+
+async def insert_personal_record(
+    conn: aiosqlite.Connection,
+    *,
+    user_id: int,
+    canonical_name: str,
+    pr_type: str,
+    weight_g: int,
+    reps: int,
+    estimated_1rm_g: int,
+    previous_value_g: int | None,
+    workout_id: int,
+    achieved_at: int,
+) -> int:
+    """Insert a new personal record. Returns the row id."""
+    cursor = await conn.execute(
+        "INSERT INTO personal_records "
+        "(user_id, canonical_name, pr_type, weight_g, reps, "
+        "estimated_1rm_g, previous_value_g, workout_id, achieved_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            user_id,
+            canonical_name,
+            pr_type,
+            weight_g,
+            reps,
+            estimated_1rm_g,
+            previous_value_g,
+            workout_id,
+            achieved_at,
+        ),
+    )
+    await conn.commit()
+    return int(cursor.lastrowid)
+
+
+async def get_personal_records(
+    conn: aiosqlite.Connection,
+    *,
+    user_id: int,
+    since_ts: int | None = None,
+    canonical_name: str | None = None,
+    limit: int = 50,
+) -> list[PersonalRecordRow]:
+    """Return PRs for a user, optionally filtered by time and exercise."""
+    clauses = ["user_id = ?"]
+    params: list[int | str] = [user_id]
+    if since_ts is not None:
+        clauses.append("achieved_at >= ?")
+        params.append(since_ts)
+    if canonical_name is not None:
+        clauses.append("canonical_name = ?")
+        params.append(canonical_name)
+    where = " AND ".join(clauses)
+    rows = await (
+        await conn.execute(
+            f"SELECT id, user_id, canonical_name, pr_type, weight_g, reps, "
+            f"estimated_1rm_g, previous_value_g, workout_id, achieved_at "
+            f"FROM personal_records WHERE {where} "
+            f"ORDER BY achieved_at DESC LIMIT ?",
+            (*params, limit),
+        )
+    ).fetchall()
+    return [
+        PersonalRecordRow(
+            id=int(r["id"]),
+            user_id=int(r["user_id"]),
+            canonical_name=r["canonical_name"],
+            pr_type=r["pr_type"],
+            weight_g=int(r["weight_g"]),
+            reps=int(r["reps"]),
+            estimated_1rm_g=int(r["estimated_1rm_g"]),
+            previous_value_g=int(r["previous_value_g"]) if r["previous_value_g"] is not None else None,
+            workout_id=int(r["workout_id"]),
+            achieved_at=int(r["achieved_at"]),
+        )
+        for r in rows
+    ]
+
+
+async def get_best_e1rm_for_exercise(
+    conn: aiosqlite.Connection,
+    *,
+    user_id: int,
+    canonical_name: str,
+) -> int | None:
+    """Return the highest estimated_1rm_g ever recorded for this user+exercise, or None."""
+    row = await (
+        await conn.execute(
+            "SELECT MAX(estimated_1rm_g) AS best "
+            "FROM personal_records "
+            "WHERE user_id = ? AND canonical_name = ? AND pr_type = 'e1rm'",
+            (user_id, canonical_name),
+        )
+    ).fetchone()
+    if row is None or row["best"] is None:
+        return None
+    return int(row["best"])

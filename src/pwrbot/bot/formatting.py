@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 
 from pwrbot.db.repo import WorkoutRow
 from pwrbot.domain.models import WorkoutPayload
+from pwrbot.metrics.pr import DetectedPR
 from pwrbot.rules.one_rm import OneRMEstimate
 from pwrbot.services.analyze import AnalyzeResult
 
@@ -146,13 +147,36 @@ def format_rm_estimates(
     return "\n".join(lines)
 
 
+def format_new_prs(prs: list[DetectedPR]) -> str | None:
+    """Format PR notifications. Returns None if empty."""
+    if not prs:
+        return None
+    lines = []
+    for pr in prs:
+        name = _BIG3_DISPLAY.get(pr.canonical_name, pr.canonical_name)
+        delta = ""
+        if pr.previous_1rm_kg is not None:
+            diff = pr.estimated_1rm_kg - pr.previous_1rm_kg
+            delta = f" (было ~{_fmt_weight(pr.previous_1rm_kg)} кг, +{_fmt_weight(diff)})"
+        lines.append(
+            f"  {name}: e1RM ~{_fmt_weight(pr.estimated_1rm_kg)} кг{delta}"
+        )
+    header = "Новый рекорд!" if len(prs) == 1 else "Новые рекорды!"
+    return header + "\n" + "\n".join(lines)
+
+
 def format_ingest_reply(
     parsed: WorkoutPayload,
     analysis: AnalyzeResult | None,
     rm_estimates: list[OneRMEstimate] | None = None,
     body_weight_kg: float | None = None,
+    new_prs: list[DetectedPR] | None = None,
 ) -> str:
     parts = [format_parsed_workout(parsed)]
+    pr_text = format_new_prs(new_prs or [])
+    if pr_text:
+        parts.append("")
+        parts.append(pr_text)
     rm_text = format_rm_estimates(rm_estimates or [], body_weight_kg=body_weight_kg)
     if rm_text:
         parts.append("")

@@ -122,7 +122,10 @@ async def on_pick(
     uid = await repo.get_or_create_user(conn, telegram_id=cb.from_user.id)
     result = await ingest.finalize_pending(conn, user_id=uid, pending=pending)
     await state.clear()
-    reply = format_ingest_reply(result.payload, result.analysis, result.rm_estimates)
+    reply = format_ingest_reply(
+        result.payload, result.analysis, result.rm_estimates,
+        result.body_weight_kg, result.new_prs,
+    )
     try:
         await cb.message.edit_text(reply)
     except Exception:

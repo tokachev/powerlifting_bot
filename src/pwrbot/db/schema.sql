@@ -64,3 +64,18 @@ CREATE TABLE IF NOT EXISTS body_weight (
     UNIQUE(user_id, recorded_at)
 );
 CREATE INDEX IF NOT EXISTS idx_bw_user_time ON body_weight(user_id, recorded_at DESC);
+
+CREATE TABLE IF NOT EXISTS personal_records (
+    id               INTEGER PRIMARY KEY,
+    user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    canonical_name   TEXT NOT NULL,
+    pr_type          TEXT NOT NULL CHECK(pr_type IN ('e1rm', 'weight', 'reps')),
+    weight_g         INTEGER NOT NULL CHECK(weight_g >= 0),
+    reps             INTEGER NOT NULL CHECK(reps >= 0),
+    estimated_1rm_g  INTEGER NOT NULL CHECK(estimated_1rm_g >= 0),
+    previous_value_g INTEGER,
+    workout_id       INTEGER NOT NULL REFERENCES workouts(id) ON DELETE CASCADE,
+    achieved_at      INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_pr_user_exercise ON personal_records(user_id, canonical_name, achieved_at DESC);
+CREATE INDEX IF NOT EXISTS idx_pr_user_time ON personal_records(user_id, achieved_at DESC);
