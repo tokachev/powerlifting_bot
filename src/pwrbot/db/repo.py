@@ -432,3 +432,79 @@ async def get_best_e1rm_for_exercise(
     if row is None or row["best"] is None:
         return None
     return int(row["best"])
+
+
+# -------------------------------------------------- video analyses
+
+
+@dataclass(slots=True)
+class VideoAnalysisRow:
+    id: int
+    user_id: int
+    exercise_hint: str | None
+    frame_count: int
+    duration_s: float
+    analysis_text: str
+    model_used: str
+    analyzed_at: int
+    telegram_file_id: str | None
+
+
+async def insert_video_analysis(
+    conn: aiosqlite.Connection,
+    *,
+    user_id: int,
+    exercise_hint: str | None,
+    frame_count: int,
+    duration_s: float,
+    analysis_text: str,
+    model_used: str,
+    telegram_file_id: str | None = None,
+) -> int:
+    cur = await conn.execute(
+        "INSERT INTO video_analyses "
+        "(user_id, exercise_hint, frame_count, duration_s, analysis_text, "
+        " model_used, analyzed_at, telegram_file_id) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            user_id,
+            exercise_hint,
+            frame_count,
+            duration_s,
+            analysis_text,
+            model_used,
+            int(time.time()),
+            telegram_file_id,
+        ),
+    )
+    await conn.commit()
+    return cur.lastrowid  # type: ignore[return-value]
+
+
+async def get_video_analyses(
+    conn: aiosqlite.Connection,
+    *,
+    user_id: int,
+    limit: int = 10,
+) -> list[VideoAnalysisRow]:
+    rows = await (
+        await conn.execute(
+            "SELECT * FROM video_analyses "
+            "WHERE user_id = ? ORDER BY analyzed_at DESC LIMIT ?",
+            (user_id, limit),
+        )
+    ).fetchall()
+    return [
+        VideoAnalysisRow(
+            id=int(r["id"]),
+            user_id=int(r["user_id"]),
+            exercise_hint=r["exercise_hint"],
+            frame_count=int(r["frame_count"]),
+            duration_s=float(r["duration_s"]),
+            analysis_text=r["analysis_text"],
+            model_used=r["model_used"],
+            analyzed_at=int(r["analyzed_at"]),
+            telegram_file_id=r["telegram_file_id"],
+        )
+        for r in rows
+    ]

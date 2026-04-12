@@ -16,6 +16,7 @@ from pwrbot.parsing.pipeline import ParsingPipeline
 from pwrbot.services.analyze import AnalyzeService
 from pwrbot.services.ingest import IngestService
 from pwrbot.services.max_query import MaxQueryService
+from pwrbot.services.technique import TechniqueAnalysisService
 
 
 async def _main_async() -> None:
@@ -40,6 +41,15 @@ async def _main_async() -> None:
         pipeline=pipeline, analyzer=analyze_svc, catalog=catalog, cfg=yaml_cfg
     )
     max_query_svc = MaxQueryService(catalog=catalog, cfg=yaml_cfg)
+    technique_svc = TechniqueAnalysisService(
+        ollama=ollama,
+        prompts=prompts,
+        vision_model=yaml_cfg.vision.model,
+        vision_timeout_s=yaml_cfg.vision.timeout_s,
+        max_frames=yaml_cfg.vision.max_frames,
+        resize_width=yaml_cfg.vision.resize_width,
+        max_video_duration_s=yaml_cfg.vision.max_video_duration_s,
+    )
 
     bot = build_bot(settings.telegram_token)
     dp = build_dispatcher(
@@ -47,6 +57,7 @@ async def _main_async() -> None:
         ingest=ingest_svc,
         analyze=analyze_svc,
         max_query_svc=max_query_svc,
+        technique_svc=technique_svc,
         yaml_config=yaml_cfg,
         catalog=catalog,
     )

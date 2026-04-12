@@ -114,3 +114,33 @@ class OllamaClient:
             f"LLM failed to return valid {schema_model.__name__} JSON after "
             f"{self._max_retries + 1} attempts. Last error: {last_error}"
         )
+
+    async def chat_vision(
+        self,
+        *,
+        system: str,
+        user: str,
+        images: list[str],
+        temperature: float = 0.2,
+        model_override: str | None = None,
+    ) -> str:
+        """Call /api/chat with base64-encoded images and return free-text response.
+
+        Images are passed in the user message via the Ollama ``images`` field.
+        """
+        model = model_override or self._model
+        payload: dict[str, Any] = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user, "images": images},
+            ],
+            "stream": False,
+            "options": {"temperature": temperature},
+        }
+        log.debug("ollama_vision_request", model=model, n_images=len(images))
+        resp = await self._client.post(
+            f"{self._base_url}/api/chat", json=payload
+        )
+        resp.raise_for_status()
+        return resp.json().get("message", {}).get("content", "").strip()

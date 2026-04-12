@@ -39,3 +39,10 @@ llm:
   base_url: http://localhost:11434
   timeout_s: 60
   max_retries: 1
+
+vision:
+  model: null              # null = использовать llm.model; можно указать например "llava:13b"
+  timeout_s: 120
+  max_frames: 6
+  resize_width: 720
+  max_video_duration_s: 60
