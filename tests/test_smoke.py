@@ -17,6 +17,7 @@ from pwrbot.domain.models import ExercisePayload, SetPayload, WorkoutPayload
 from pwrbot.parsing.pipeline import ParsingPipeline
 from pwrbot.services.analyze import AnalyzeResult, AnalyzeService
 from pwrbot.services.ingest import IngestService
+from pwrbot.services.max_query import MaxQueryService
 from tests.conftest import REPO_ROOT
 
 
@@ -40,14 +41,16 @@ async def test_dispatcher_builds_with_all_routers(conn, yaml_config) -> None:
         pipeline=pipeline, analyzer=analyzer, catalog=catalog, cfg=yaml_config
     )
 
+    max_query_svc = MaxQueryService(catalog=catalog, cfg=yaml_config)
     dp = build_dispatcher(
         conn=conn,
         ingest=ingest,
         analyze=analyzer,
+        max_query_svc=max_query_svc,
     )
 
-    # 6 routers expected: basic, view, analyze, edit, clarify, log
-    assert len(dp.sub_routers) == 6
+    # 7 routers expected: basic, view, analyze, edit, clarify, max_query, log
+    assert len(dp.sub_routers) == 7
 
 
 def test_format_parsed_workout_basic() -> None:

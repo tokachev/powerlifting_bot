@@ -1,6 +1,7 @@
 windows:
   short_days: 7
   long_days: 28
+  rm_window_days: 90
 
 thresholds:
   hard_set:

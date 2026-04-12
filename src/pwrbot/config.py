@@ -47,6 +47,7 @@ class Windows(BaseModel):
     model_config = ConfigDict(frozen=True)
     short_days: int = 7
     long_days: int = 28
+    rm_window_days: int = 90
 
 
 class LLMConfig(BaseModel):

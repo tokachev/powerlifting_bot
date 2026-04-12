@@ -15,6 +15,7 @@ from pwrbot.parsing.llm_parser import LLMParser
 from pwrbot.parsing.pipeline import ParsingPipeline
 from pwrbot.services.analyze import AnalyzeService
 from pwrbot.services.ingest import IngestService
+from pwrbot.services.max_query import MaxQueryService
 
 
 async def _main_async() -> None:
@@ -38,12 +39,14 @@ async def _main_async() -> None:
     ingest_svc = IngestService(
         pipeline=pipeline, analyzer=analyze_svc, catalog=catalog, cfg=yaml_cfg
     )
+    max_query_svc = MaxQueryService(catalog=catalog, cfg=yaml_cfg)
 
     bot = build_bot(settings.telegram_token)
     dp = build_dispatcher(
         conn=conn,
         ingest=ingest_svc,
         analyze=analyze_svc,
+        max_query_svc=max_query_svc,
     )
 
     try:

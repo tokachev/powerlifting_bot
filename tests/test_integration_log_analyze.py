@@ -73,6 +73,15 @@ async def test_log_then_auto_analyze(conn, yaml_config) -> None:
     ).fetchone()
     assert row["c"] == 1
 
+    # 1RM estimates should be populated for big-3 exercises
+    assert len(result.rm_estimates) == 2
+    names = {e.canonical_name for e in result.rm_estimates}
+    assert "back_squat" in names
+    assert "bench_press" in names
+    squat_est = next(e for e in result.rm_estimates if e.canonical_name == "back_squat")
+    assert squat_est.target_group == "squat"
+    assert squat_est.estimated_1rm_kg > 100  # must be > the working weight
+
 
 async def test_log_unknown_exercise_returns_pending(conn, yaml_config) -> None:
     """Unknown raw_name → LLM returns suggestions → service returns pending, no persist."""
