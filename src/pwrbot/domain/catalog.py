@@ -28,6 +28,7 @@ class CatalogEntry:
     aliases: tuple[str, ...]
     target_group: str | None = None
     muscle_group: str | None = None
+    is_bilateral_dumbbell: bool = False
 
 
 _PUNCT_RE = re.compile(r"[^\w\s]", re.UNICODE)
@@ -126,6 +127,8 @@ def load_catalog(path: Path) -> Catalog:
                 f"allowed: {sorted(VALID_MUSCLE_GROUPS)} or null"
             )
 
+        is_bilateral_dumbbell = bool(body.get("is_bilateral_dumbbell", False))
+
         entries.append(
             CatalogEntry(
                 canonical_name=canonical_name,
@@ -133,6 +136,7 @@ def load_catalog(path: Path) -> Catalog:
                 aliases=tuple(str(a) for a in aliases_raw),
                 target_group=target_group,
                 muscle_group=muscle_group,
+                is_bilateral_dumbbell=is_bilateral_dumbbell,
             )
         )
     return Catalog(entries)

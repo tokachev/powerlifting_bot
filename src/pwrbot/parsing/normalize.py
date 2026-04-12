@@ -65,14 +65,33 @@ def movement_pattern_for(canonical_name: str | None, catalog: Catalog) -> str | 
     return None
 
 
+def _apply_bilateral_dumbbell(
+    sets: list[SetPayload],
+) -> list[SetPayload]:
+    """Double weight_kg for bilateral dumbbell exercises.
+
+    Users log per-dumbbell weight (e.g. 16 kg), but the actual load on the body
+    is twice that (two dumbbells). Multiplying here ensures tonnage, intensity
+    and all downstream calculations reflect the true total load.
+    """
+    return [
+        s.model_copy(update={"weight_kg": s.weight_kg * 2}) if s.weight_kg > 0 else s
+        for s in sets
+    ]
+
+
 def normalize_workout(
     payload: WorkoutPayload, catalog: Catalog, cfg: YamlConfig
 ) -> WorkoutPayload:
-    """Apply catalog lookup + warmup-by-weight rule. Returns a new payload."""
+    """Apply catalog lookup + bilateral-dumbbell doubling + warmup-by-weight rule."""
     new_exercises: list[ExercisePayload] = []
     frac = cfg.thresholds.warmup.max_fraction_of_working_weight
     for ex in payload.exercises:
         ex = resolve_exercise(ex, catalog)
+        # Double weight for bilateral dumbbell exercises (user logs per-hand weight).
+        entry = catalog.by_canonical(ex.canonical_name) if ex.canonical_name else None
+        if entry and entry.is_bilateral_dumbbell:
+            ex = ex.model_copy(update={"sets": _apply_bilateral_dumbbell(ex.sets)})
         ex = ex.model_copy(update={"sets": apply_warmup_by_weight(ex.sets, frac)})
         new_exercises.append(ex)
     return payload.model_copy(update={"exercises": new_exercises})

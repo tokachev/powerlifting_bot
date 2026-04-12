@@ -1,14 +1,20 @@
-"""Unit tests for parsing.normalize — primarily apply_warmup_by_weight.
+"""Unit tests for parsing.normalize — warmup-by-weight and bilateral dumbbell doubling.
 
 The key invariant under test: weight-based warmup detection is a SINGLE SOURCE
 OF TRUTH for sets with weight > 0 and overrides any incoming is_warmup flag
 from the LLM/regex parsers. For weightless sets the original flag is preserved.
+
+Bilateral-dumbbell invariant: exercises marked ``is_bilateral_dumbbell`` in the
+catalog have their per-set ``weight_kg`` doubled during normalization so tonnage
+reflects the total load (two dumbbells).
 """
 
 from __future__ import annotations
 
-from pwrbot.domain.models import SetPayload
-from pwrbot.parsing.normalize import apply_warmup_by_weight
+from pwrbot.config import YamlConfig
+from pwrbot.domain.catalog import Catalog, CatalogEntry
+from pwrbot.domain.models import ExercisePayload, SetPayload, WorkoutPayload
+from pwrbot.parsing.normalize import apply_warmup_by_weight, normalize_workout
 
 
 def _s(weight_kg: float, is_warmup: bool = False, reps: int = 10) -> SetPayload:
@@ -104,3 +110,124 @@ def test_format_c_sumo_deadlift_ladder_warmup_distribution():
     assert sum(s.is_warmup for s in out) == expected_warmup_count
     assert [s.is_warmup for s in out[:4]] == [True, True, True, True]
     assert all(not s.is_warmup for s in out[4:])
+
+
+# ── bilateral dumbbell doubling ────────────────────────────────────────────
+
+def _make_catalog(*entries: CatalogEntry) -> Catalog:
+    return Catalog(list(entries))
+
+
+def _dumbbell_entry() -> CatalogEntry:
+    return CatalogEntry(
+        canonical_name="dumbbell_shoulder_press",
+        movement_pattern="push",
+        aliases=("жим гантелей стоя",),
+        muscle_group="shoulders",
+        is_bilateral_dumbbell=True,
+    )
+
+
+def _barbell_entry() -> CatalogEntry:
+    return CatalogEntry(
+        canonical_name="bench_press",
+        movement_pattern="push",
+        aliases=("жим лежа",),
+        muscle_group="chest",
+        is_bilateral_dumbbell=False,
+    )
+
+
+def test_bilateral_dumbbell_doubles_weight(yaml_config: YamlConfig):
+    """Dumbbell shoulder press 16 kg per hand → stored as 32 kg total."""
+    catalog = _make_catalog(_dumbbell_entry())
+    payload = WorkoutPayload(exercises=[
+        ExercisePayload(
+            raw_name="жим гантелей стоя",
+            canonical_name="dumbbell_shoulder_press",
+            sets=[
+                SetPayload(reps=16, weight_kg=16.0),
+                SetPayload(reps=16, weight_kg=16.0),
+                SetPayload(reps=16, weight_kg=16.0),
+            ],
+        ),
+    ])
+
+    result = normalize_workout(payload, catalog, yaml_config)
+
+    for s in result.exercises[0].sets:
+        assert s.weight_kg == 32.0
+
+
+def test_barbell_exercise_not_doubled(yaml_config: YamlConfig):
+    """Barbell bench press weight must NOT be doubled."""
+    catalog = _make_catalog(_barbell_entry())
+    payload = WorkoutPayload(exercises=[
+        ExercisePayload(
+            raw_name="жим лежа",
+            canonical_name="bench_press",
+            sets=[SetPayload(reps=5, weight_kg=100.0)],
+        ),
+    ])
+
+    result = normalize_workout(payload, catalog, yaml_config)
+
+    assert result.exercises[0].sets[0].weight_kg == 100.0
+
+
+def test_bilateral_dumbbell_zero_weight_not_doubled(yaml_config: YamlConfig):
+    """Bodyweight sets (weight=0) within a dumbbell exercise stay at 0."""
+    catalog = _make_catalog(_dumbbell_entry())
+    payload = WorkoutPayload(exercises=[
+        ExercisePayload(
+            raw_name="жим гантелей стоя",
+            canonical_name="dumbbell_shoulder_press",
+            sets=[
+                SetPayload(reps=10, weight_kg=0.0),
+                SetPayload(reps=8, weight_kg=14.0),
+            ],
+        ),
+    ])
+
+    result = normalize_workout(payload, catalog, yaml_config)
+
+    assert result.exercises[0].sets[0].weight_kg == 0.0
+    assert result.exercises[0].sets[1].weight_kg == 28.0
+
+
+def test_bilateral_dumbbell_warmup_uses_doubled_weight(yaml_config: YamlConfig):
+    """Warmup threshold is applied AFTER doubling: 8→16 and 16→32.
+    max=32, threshold=32*0.6=19.2. Set at 16 kg (doubled) < 19.2 → warmup."""
+    catalog = _make_catalog(_dumbbell_entry())
+    payload = WorkoutPayload(exercises=[
+        ExercisePayload(
+            raw_name="жим гантелей стоя",
+            canonical_name="dumbbell_shoulder_press",
+            sets=[
+                SetPayload(reps=10, weight_kg=8.0),   # → 16 kg < 19.2 → warmup
+                SetPayload(reps=8, weight_kg=16.0),    # → 32 kg → working
+            ],
+        ),
+    ])
+
+    result = normalize_workout(payload, catalog, yaml_config)
+
+    assert result.exercises[0].sets[0].weight_kg == 16.0
+    assert result.exercises[0].sets[0].is_warmup is True
+    assert result.exercises[0].sets[1].weight_kg == 32.0
+    assert result.exercises[0].sets[1].is_warmup is False
+
+
+def test_unresolved_exercise_not_doubled(yaml_config: YamlConfig):
+    """If canonical_name is None (exercise not resolved), don't double."""
+    catalog = _make_catalog(_dumbbell_entry())
+    payload = WorkoutPayload(exercises=[
+        ExercisePayload(
+            raw_name="неизвестное упражнение",
+            sets=[SetPayload(reps=10, weight_kg=20.0)],
+        ),
+    ])
+
+    result = normalize_workout(payload, catalog, yaml_config)
+
+    assert result.exercises[0].sets[0].weight_kg == 20.0
