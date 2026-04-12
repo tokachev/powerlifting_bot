@@ -9,6 +9,8 @@ import aiosqlite
 from aiogram import BaseMiddleware
 from aiogram.types import TelegramObject
 
+from pwrbot.config import YamlConfig
+from pwrbot.domain.catalog import Catalog
 from pwrbot.services.analyze import AnalyzeService
 from pwrbot.services.ingest import IngestService
 from pwrbot.services.max_query import MaxQueryService
@@ -24,11 +26,15 @@ class DIMiddleware(BaseMiddleware):
         ingest: IngestService,
         analyze: AnalyzeService,
         max_query_svc: MaxQueryService,
+        yaml_config: YamlConfig,
+        catalog: Catalog,
     ) -> None:
         self._conn = conn
         self._ingest = ingest
         self._analyze = analyze
         self._max_query_svc = max_query_svc
+        self._yaml_config = yaml_config
+        self._catalog = catalog
 
     async def __call__(
         self,
@@ -40,4 +46,6 @@ class DIMiddleware(BaseMiddleware):
         data["ingest"] = self._ingest
         data["analyze"] = self._analyze
         data["max_query_svc"] = self._max_query_svc
+        data["yaml_config"] = self._yaml_config
+        data["catalog"] = self._catalog
         return await handler(event, data)
