@@ -122,3 +122,51 @@ class PersonalRecordSchema(BaseModel):
 
 class PRsResponse(BaseModel):
     records: list[PersonalRecordSchema]
+
+
+# ------------------------------------------------------------------ per-exercise detail
+
+
+class SetDetailSchema(BaseModel):
+    reps: int
+    weight_kg: float
+    rpe: float | None
+    is_warmup: bool
+    estimated_1rm_kg: float | None
+
+
+class ExerciseSessionSchema(BaseModel):
+    date: date
+    best_e1rm_kg: float
+    total_volume_kg: float
+    sets: list[SetDetailSchema]
+
+
+class PerExerciseResponse(BaseModel):
+    sessions: list[ExerciseSessionSchema]
+
+
+# ------------------------------------------------------------------ rep distribution
+
+
+class RepBucketSchema(BaseModel):
+    rep_range: str
+    set_count: int
+    rep_count: int
+
+
+class RepDistributionResponse(BaseModel):
+    buckets: list[RepBucketSchema]
+
+
+# ------------------------------------------------------------------ frequency
+
+
+class FrequencyCellSchema(BaseModel):
+    iso_week: str
+    muscle_group: str
+    sessions: int
+
+
+class FrequencyResponse(BaseModel):
+    cells: list[FrequencyCellSchema]

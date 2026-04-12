@@ -175,6 +175,51 @@ export interface PRsResponse {
   records: PersonalRecord[]
 }
 
+// ------------------------------------------------------------------ per-exercise detail
+
+export interface SetDetail {
+  reps: number
+  weight_kg: number
+  rpe: number | null
+  is_warmup: boolean
+  estimated_1rm_kg: number | null
+}
+
+export interface ExerciseSession {
+  date: string
+  best_e1rm_kg: number
+  total_volume_kg: number
+  sets: SetDetail[]
+}
+
+export interface PerExerciseResponse {
+  sessions: ExerciseSession[]
+}
+
+// ------------------------------------------------------------------ rep distribution
+
+export interface RepBucket {
+  rep_range: string
+  set_count: number
+  rep_count: number
+}
+
+export interface RepDistributionResponse {
+  buckets: RepBucket[]
+}
+
+// ------------------------------------------------------------------ frequency
+
+export interface FrequencyCell {
+  iso_week: string
+  muscle_group: string
+  sessions: number
+}
+
+export interface FrequencyResponse {
+  cells: FrequencyCell[]
+}
+
 export const MUSCLE_GROUP_COLORS: Record<string, string> = {
   legs: '#3b82f6',
   chest: '#ef4444',

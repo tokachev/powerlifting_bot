@@ -27,8 +27,15 @@ from pwrbot.api.schemas import (
     E1RMPointSchema,
     E1RMTrendResponse,
     ExerciseInfo,
+    ExerciseSessionSchema,
+    FrequencyCellSchema,
+    FrequencyResponse,
+    PerExerciseResponse,
     PersonalRecordSchema,
     PRsResponse,
+    RepBucketSchema,
+    RepDistributionResponse,
+    SetDetailSchema,
     TonnageTrendResponse,
     TonnageWeekSchema,
     UserInfo,
@@ -46,6 +53,9 @@ from pwrbot.domain.catalog import (
 )
 from pwrbot.metrics.calendar import compute_calendar
 from pwrbot.metrics.e1rm_trend import compute_e1rm_trend
+from pwrbot.metrics.frequency import compute_frequency
+from pwrbot.metrics.per_exercise import compute_per_exercise
+from pwrbot.metrics.rep_distribution import compute_rep_distribution
 from pwrbot.metrics.tonnage_trend import compute_tonnage_trend
 from pwrbot.metrics.weekly_sets import compute_weekly_sets
 from pwrbot.services.reporting import FilterSpec, build_dashboard
@@ -417,6 +427,133 @@ def create_app(
                     ),
                 )
                 for r in rows
+            ]
+        )
+
+    @app.get("/api/per-exercise", response_model=PerExerciseResponse)
+    async def per_exercise(
+        request: Request,
+        user_id: Annotated[int, Query(...)],
+        exercise: Annotated[str, Query(...)],
+        since: Annotated[date | None, Query()] = None,
+        until: Annotated[date | None, Query()] = None,
+    ) -> PerExerciseResponse:
+        today = datetime.now(UTC).date()
+        until_d = until or today
+        since_d = since or (until_d - timedelta(days=89))
+        if since_d > until_d:
+            raise HTTPException(status_code=400, detail="since must be <= until")
+
+        c: aiosqlite.Connection = request.app.state.conn
+        async with c.execute(
+            "SELECT id FROM users WHERE id = ?", (user_id,)
+        ) as cur:
+            if (await cur.fetchone()) is None:
+                raise HTTPException(status_code=404, detail="user not found")
+
+        workouts = await repo.get_workouts_in_window(
+            c,
+            user_id=user_id,
+            since_ts=_date_to_unix_start(since_d),
+            until_ts=_date_to_unix_end(until_d),
+        )
+        sessions = compute_per_exercise(workouts, exercise)
+        return PerExerciseResponse(
+            sessions=[
+                ExerciseSessionSchema(
+                    date=s.date,
+                    best_e1rm_kg=s.best_e1rm_kg,
+                    total_volume_kg=s.total_volume_kg,
+                    sets=[
+                        SetDetailSchema(
+                            reps=sd.reps,
+                            weight_kg=sd.weight_kg,
+                            rpe=sd.rpe,
+                            is_warmup=sd.is_warmup,
+                            estimated_1rm_kg=sd.estimated_1rm_kg,
+                        )
+                        for sd in s.sets
+                    ],
+                )
+                for s in sessions
+            ]
+        )
+
+    @app.get("/api/rep-distribution", response_model=RepDistributionResponse)
+    async def rep_distribution(
+        request: Request,
+        user_id: Annotated[int, Query(...)],
+        canonical_name: Annotated[str | None, Query()] = None,
+        since: Annotated[date | None, Query()] = None,
+        until: Annotated[date | None, Query()] = None,
+    ) -> RepDistributionResponse:
+        today = datetime.now(UTC).date()
+        until_d = until or today
+        since_d = since or (until_d - timedelta(days=89))
+        if since_d > until_d:
+            raise HTTPException(status_code=400, detail="since must be <= until")
+
+        c: aiosqlite.Connection = request.app.state.conn
+        async with c.execute(
+            "SELECT id FROM users WHERE id = ?", (user_id,)
+        ) as cur:
+            if (await cur.fetchone()) is None:
+                raise HTTPException(status_code=404, detail="user not found")
+
+        workouts = await repo.get_workouts_in_window(
+            c,
+            user_id=user_id,
+            since_ts=_date_to_unix_start(since_d),
+            until_ts=_date_to_unix_end(until_d),
+        )
+        buckets = compute_rep_distribution(workouts, canonical_name)
+        return RepDistributionResponse(
+            buckets=[
+                RepBucketSchema(
+                    rep_range=b.rep_range,
+                    set_count=b.set_count,
+                    rep_count=b.rep_count,
+                )
+                for b in buckets
+            ]
+        )
+
+    @app.get("/api/frequency", response_model=FrequencyResponse)
+    async def frequency(
+        request: Request,
+        user_id: Annotated[int, Query(...)],
+        since: Annotated[date | None, Query()] = None,
+        until: Annotated[date | None, Query()] = None,
+    ) -> FrequencyResponse:
+        today = datetime.now(UTC).date()
+        until_d = until or today
+        since_d = since or (until_d - timedelta(days=83))
+        if since_d > until_d:
+            raise HTTPException(status_code=400, detail="since must be <= until")
+
+        c: aiosqlite.Connection = request.app.state.conn
+        async with c.execute(
+            "SELECT id FROM users WHERE id = ?", (user_id,)
+        ) as cur:
+            if (await cur.fetchone()) is None:
+                raise HTTPException(status_code=404, detail="user not found")
+
+        cat: Catalog = request.app.state.catalog
+        workouts = await repo.get_workouts_in_window(
+            c,
+            user_id=user_id,
+            since_ts=_date_to_unix_start(since_d),
+            until_ts=_date_to_unix_end(until_d),
+        )
+        cells = compute_frequency(workouts, cat)
+        return FrequencyResponse(
+            cells=[
+                FrequencyCellSchema(
+                    iso_week=cell.iso_week,
+                    muscle_group=cell.muscle_group,
+                    sessions=cell.sessions,
+                )
+                for cell in cells
             ]
         )
 

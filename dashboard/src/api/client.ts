@@ -5,7 +5,10 @@ import type {
   DashboardResponse,
   E1RMTrendResponse,
   ExerciseInfo,
+  FrequencyResponse,
+  PerExerciseResponse,
   PRsResponse,
+  RepDistributionResponse,
   TonnageTrendResponse,
   UserInfo,
   WeeklySetsResponse,
@@ -97,5 +100,48 @@ export async function fetchPRs(
   limit: number = 20,
 ): Promise<PRsResponse> {
   const r = await http.get<PRsResponse>(`/api/prs?user_id=${userId}&limit=${limit}`)
+  return r.data
+}
+
+export async function fetchPerExercise(
+  userId: number,
+  exercise: string,
+  since: string,
+  until: string,
+): Promise<PerExerciseResponse> {
+  const params = new URLSearchParams()
+  params.append('user_id', String(userId))
+  params.append('exercise', exercise)
+  params.append('since', since)
+  params.append('until', until)
+  const r = await http.get<PerExerciseResponse>(`/api/per-exercise?${params.toString()}`)
+  return r.data
+}
+
+export async function fetchRepDistribution(
+  userId: number,
+  since: string,
+  until: string,
+  canonicalName?: string,
+): Promise<RepDistributionResponse> {
+  const params = new URLSearchParams()
+  params.append('user_id', String(userId))
+  params.append('since', since)
+  params.append('until', until)
+  if (canonicalName) params.append('canonical_name', canonicalName)
+  const r = await http.get<RepDistributionResponse>(`/api/rep-distribution?${params.toString()}`)
+  return r.data
+}
+
+export async function fetchFrequency(
+  userId: number,
+  since: string,
+  until: string,
+): Promise<FrequencyResponse> {
+  const params = new URLSearchParams()
+  params.append('user_id', String(userId))
+  params.append('since', since)
+  params.append('until', until)
+  const r = await http.get<FrequencyResponse>(`/api/frequency?${params.toString()}`)
   return r.data
 }
