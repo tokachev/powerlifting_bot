@@ -199,6 +199,10 @@ _RE_TECHNIQUE_MOD = re.compile(
 # previous exercise block.
 _RE_ANNOTATION = re.compile(r"^\s*далее\b", re.IGNORECASE)
 
+# Words that are numeric connectors, not exercise names. A line starting with
+# a digit and containing ONLY these as letter-words is still a CONTINUATION.
+_NUMERIC_CONNECTORS = frozenset({"на", "по", "кг", "kg", "х", "x"})
+
 
 @dataclass(slots=True)
 class LogicalBlock:
@@ -224,6 +228,11 @@ def _classify(line: str) -> str:
     has_letter = bool(_RE_HAS_LETTER.search(line))
     has_digit = bool(_RE_HAS_DIGIT.search(line))
     starts_numeric = bool(_RE_STARTS_WITH_NUMERIC.match(line))
+    # "14 на 16", "4 по 15 кг" — connector words don't make it an exercise name
+    if has_letter and starts_numeric:
+        words = {w.lower() for w in re.findall(r"[A-Za-zА-Яа-яЁё]+", line)}
+        if words <= _NUMERIC_CONNECTORS:
+            has_letter = False
     if starts_numeric and not has_letter:
         return "CONTINUATION"
     if has_letter and not has_digit:

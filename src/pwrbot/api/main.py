@@ -91,7 +91,8 @@ async def _lifespan(app: FastAPI):
     conn = await aiosqlite.connect(db_path, isolation_level=None)
     conn.row_factory = aiosqlite.Row
     await conn.execute("PRAGMA foreign_keys = ON")
-    await bootstrap(conn)
+    # Skip bootstrap — the bot process (r/w) owns schema migrations.
+    # Dashboard volume is mounted read-only, so DDL would fail here.
     app.state.conn = conn
     try:
         yield

@@ -27,7 +27,7 @@ const tooltipStyle = {
 export function WeeklySets({ data }: Props) {
   const { chartData, muscles } = useMemo(() => {
     // pivot: one row per week, columns = muscle groups
-    const byWeek = new Map<string, Record<string, number>>()
+    const byWeek = new Map<string, Record<string, string | number>>()
     const muscleSet = new Set<string>()
 
     for (const b of data.buckets) {
@@ -37,11 +37,11 @@ export function WeeklySets({ data }: Props) {
         row = { week: b.iso_week }
         byWeek.set(b.iso_week, row)
       }
-      row[b.muscle_group] = (row[b.muscle_group] ?? 0) + b.hard_sets
+      row[b.muscle_group] = ((row[b.muscle_group] as number) ?? 0) + b.hard_sets
     }
 
     const sorted = Array.from(byWeek.values()).sort((a, b) =>
-      (a.week as string) < (b.week as string) ? -1 : 1,
+      String(a.week) < String(b.week) ? -1 : 1,
     )
     // maintain consistent order
     const muscles = MUSCLE_GROUPS.filter((m) => muscleSet.has(m))

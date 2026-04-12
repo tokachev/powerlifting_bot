@@ -433,6 +433,35 @@ def test_rep_range_sets_of() -> None:
     assert all(s.reps == 10 for s in ex.sets)
 
 
+def test_wxrxn_format() -> None:
+    """50х20х4 → weight=50, reps=20, sets=4 (first > last → WxRxN)."""
+    result = parse("сгибания голени 50х20х4")
+    assert result is not None
+    ex = result[0]
+    assert len(ex.sets) == 4
+    assert all(s.weight_kg == 50 and s.reps == 20 for s in ex.sets)
+
+
+def test_nxrxw_preserved_when_last_gt_first() -> None:
+    """3x5x100 → sets=3, reps=5, weight=100 (last > first → NxRxW)."""
+    result = parse("присед 3x5x100")
+    assert result is not None
+    ex = result[0]
+    assert len(ex.sets) == 3
+    assert all(s.weight_kg == 100 and s.reps == 5 for s in ex.sets)
+
+
+def test_r_na_w() -> None:
+    """14 на 16 → 1 set, 14 reps, 16kg."""
+    result = parse("жим гантелей стоя\n14 на 16\n16х16х3")
+    assert result is not None
+    ex = result[0]
+    assert len(ex.sets) == 4  # 1 + 3
+    assert ex.sets[0].reps == 14
+    assert ex.sets[0].weight_kg == 16
+    assert all(s.weight_kg == 16 and s.reps == 16 for s in ex.sets[1:])
+
+
 def test_sets_of_lookahead_blocks_greedy_weight() -> None:
     """Bare regression test for the specific weight-greediness bug."""
     # Two groups separated by space — weight slot should not eat leading 2 from second.

@@ -75,6 +75,11 @@ RE_N_STAR_R = re.compile(
     rf"(?P<sets>\d+)\s*{_X}\s*(?P<reps>\d+){_REP_RANGE}\b(?!\s*{_NUM})",
     re.IGNORECASE,
 )
+# "14 на 16" — reps at weight, implied 1 set
+RE_R_NA_W = re.compile(
+    rf"(?P<reps>\d+)\s*на\s*(?P<weight>{_NUM})\s*{_KG}",
+    re.IGNORECASE,
+)
 
 # RPE: "@8", "@rpe 8", "rpe 8", "рпе 8"
 RE_RPE = re.compile(
@@ -204,9 +209,15 @@ def _build_w_nr(
 def _build_nrw(
     m: re.Match[str], rpe: float | None, is_warmup: bool
 ) -> list[ParsedSet] | None:
-    n = int(m.group("sets"))
-    r = int(m.group("reps"))
-    w = _to_float(m.group("weight"))
+    a = int(m.group("sets"))
+    b = int(m.group("reps"))
+    c = _to_float(m.group("weight"))
+    if a > c:
+        # WxRxN: first number > last → weight × reps × sets (e.g. 50х20х4)
+        n, r, w = int(c), b, float(a)
+    else:
+        # NxRxW: standard sets × reps × weight (e.g. 3x5x100)
+        n, r, w = a, b, c
     return [ParsedSet(reps=r, weight_kg=w, rpe=rpe, is_warmup=is_warmup) for _ in range(n)]
 
 
@@ -227,6 +238,14 @@ def _build_sets_of(
     w_raw = m.group("weight")
     w = _to_float(w_raw) if w_raw else 0.0
     return [ParsedSet(reps=r, weight_kg=w, rpe=rpe, is_warmup=is_warmup) for _ in range(n)]
+
+
+def _build_r_na_w(
+    m: re.Match[str], rpe: float | None, is_warmup: bool
+) -> list[ParsedSet] | None:
+    r = int(m.group("reps"))
+    w = _to_float(m.group("weight"))
+    return [ParsedSet(reps=r, weight_kg=w, rpe=rpe, is_warmup=is_warmup)]
 
 
 _MAX_BW_SETS = 20  # bodyweight set count cap for N*R fallback pattern
@@ -252,6 +271,7 @@ _PATTERN_BUILDERS: list[tuple[re.Pattern[str], _PatternBuilder]] = [
     (RE_NRW, _build_nrw),
     (RE_NR_W, _build_nr_w),
     (RE_SETS_OF, _build_sets_of),
+    (RE_R_NA_W, _build_r_na_w),
     (RE_N_STAR_R, _build_n_star_r),
 ]
 
