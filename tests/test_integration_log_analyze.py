@@ -250,7 +250,7 @@ async def test_format_e_multi_setgroup_po(conn, yaml_config) -> None:
     assert result.parse_error is None
     assert result.pending is None
     ex = result.payload.exercises[0]
-    assert ex.canonical_name == "bicep_curl"
+    assert ex.canonical_name == "dumbbell_bicep_curl"
     assert len(ex.sets) == 4
     assert [s.reps for s in ex.sets] == [12, 12, 10, 10]
     assert all(s.weight_kg == 0 for s in ex.sets)

@@ -104,6 +104,7 @@ incline_bench_press:
 dumbbell_bench_press:
   movement_pattern: push
   muscle_group: chest
+  is_bilateral_dumbbell: true
   aliases: [жим гантелей, жим гантелей лежа, dumbbell bench press, жим гантель лёжа]
 
 overhead_press:
@@ -114,6 +115,7 @@ overhead_press:
 dumbbell_shoulder_press:
   movement_pattern: push
   muscle_group: shoulders
+  is_bilateral_dumbbell: true
   aliases: [жим гантелей стоя, жим гантелей сидя, dumbbell shoulder press]
 
 push_up:
@@ -174,6 +176,7 @@ face_pull:
 lateral_raise:
   movement_pattern: accessory
   muscle_group: shoulders
+  is_bilateral_dumbbell: true
   aliases: [махи в стороны, разводки в стороны, lateral raise, махи гантелей, махи на дельты, махи дельты, махи на плечи]
 
 rear_delt_fly:
@@ -184,6 +187,7 @@ rear_delt_fly:
 dumbbell_fly:
   movement_pattern: push
   muscle_group: chest
+  is_bilateral_dumbbell: true
   aliases: [разводки гантелей, разводка гантелей, dumbbell fly, разводки лёжа]
 
 pec_deck:
@@ -194,11 +198,18 @@ pec_deck:
 bicep_curl:
   movement_pattern: accessory
   muscle_group: arms
-  aliases: [бицепс, подъем на бицепс, сгибания на бицепс, bicep curl, curl, бицуха, бицепс с гантелями, бицепс гантелями]
+  aliases: [бицепс, подъем на бицепс, сгибания на бицепс, bicep curl, curl, бицуха]
+
+dumbbell_bicep_curl:
+  movement_pattern: accessory
+  muscle_group: arms
+  is_bilateral_dumbbell: true
+  aliases: [бицепс с гантелями, бицепс гантелями, dumbbell curl, dumbbell bicep curl]
 
 hammer_curl:
   movement_pattern: accessory
   muscle_group: arms
+  is_bilateral_dumbbell: true
   aliases: [молотки, молоточки, hammer curl, нейтральный хват бицепс]
 
 farmer_walk:

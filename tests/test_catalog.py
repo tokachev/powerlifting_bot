@@ -77,8 +77,8 @@ def test_new_aliases_resolve() -> None:
     cat = load_catalog(CATALOG_PATH)
     # махи на дельты → lateral_raise
     assert cat.resolve("махи на дельты").canonical_name == "lateral_raise"
-    # бицепс с гантелями → bicep_curl
-    assert cat.resolve("бицепс с гантелями").canonical_name == "bicep_curl"
+    # бицепс с гантелями → dumbbell_bicep_curl (split from bicep_curl)
+    assert cat.resolve("бицепс с гантелями").canonical_name == "dumbbell_bicep_curl"
     # французский с гантелями → tricep_extension
     assert cat.resolve("французский с гантелями").canonical_name == "tricep_extension"
     # жим с резиной → bench_press (tech debt: merged, not a separate canonical)
