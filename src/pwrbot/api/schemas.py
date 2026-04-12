@@ -44,3 +44,18 @@ class DashboardResponse(BaseModel):
     total_kpsh: int
     avg_intensity_kg: float | None
     filters: DashboardFiltersEcho
+
+
+# ------------------------------------------------------------------ e1rm trend
+
+
+class E1RMPointSchema(BaseModel):
+    date: date
+    canonical_name: str
+    estimated_1rm_kg: float
+    best_weight_kg: float
+    best_reps: int
+
+
+class E1RMTrendResponse(BaseModel):
+    points: list[E1RMPointSchema]

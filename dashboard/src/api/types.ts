@@ -89,3 +89,29 @@ export const MOVEMENT_PATTERN_LABELS: Record<string, string> = {
   core: 'Core',
   accessory: 'Accessory',
 }
+
+// ------------------------------------------------------------------ e1rm trend
+
+export interface E1RMPoint {
+  date: string
+  canonical_name: string
+  estimated_1rm_kg: number
+  best_weight_kg: number
+  best_reps: number
+}
+
+export interface E1RMTrendResponse {
+  points: E1RMPoint[]
+}
+
+export const E1RM_EXERCISE_COLORS: Record<string, string> = {
+  back_squat: '#f97316',
+  bench_press: '#3b82f6',
+  deadlift: '#ef4444',
+}
+
+export const E1RM_EXERCISE_LABELS: Record<string, string> = {
+  back_squat: 'Присед',
+  bench_press: 'Жим лёжа',
+  deadlift: 'Становая',
+}

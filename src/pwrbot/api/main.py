@@ -22,6 +22,8 @@ from pwrbot.api.schemas import (
     BodyWeightEntry,
     DashboardFiltersEcho,
     DashboardResponse,
+    E1RMPointSchema,
+    E1RMTrendResponse,
     ExerciseInfo,
     UserInfo,
 )
@@ -32,6 +34,7 @@ from pwrbot.domain.catalog import (
     Catalog,
     load_catalog,
 )
+from pwrbot.metrics.e1rm_trend import compute_e1rm_trend
 from pwrbot.services.reporting import FilterSpec, build_dashboard
 
 VALID_MOVEMENT_PATTERNS = frozenset(
@@ -197,6 +200,47 @@ def create_app(catalog: Catalog, *, lifespan: bool = False) -> FastAPI:
                 movement_patterns=mp,
                 target_only=target_only,
             ),
+        )
+
+    @app.get("/api/e1rm", response_model=E1RMTrendResponse)
+    async def e1rm_trend(
+        request: Request,
+        user_id: Annotated[int, Query(...)],
+        exercises: Annotated[list[str], Query(...)],
+        since: Annotated[date | None, Query()] = None,
+        until: Annotated[date | None, Query()] = None,
+    ) -> E1RMTrendResponse:
+        today = datetime.now(UTC).date()
+        until_d = until or today
+        since_d = since or (until_d - timedelta(days=89))
+        if since_d > until_d:
+            raise HTTPException(status_code=400, detail="since must be <= until")
+
+        c: aiosqlite.Connection = request.app.state.conn
+        async with c.execute(
+            "SELECT id FROM users WHERE id = ?", (user_id,)
+        ) as cur:
+            if (await cur.fetchone()) is None:
+                raise HTTPException(status_code=404, detail="user not found")
+
+        workouts = await repo.get_workouts_in_window(
+            c,
+            user_id=user_id,
+            since_ts=_date_to_unix_start(since_d),
+            until_ts=_date_to_unix_end(until_d),
+        )
+        points = compute_e1rm_trend(workouts, exercises)
+        return E1RMTrendResponse(
+            points=[
+                E1RMPointSchema(
+                    date=p.date,
+                    canonical_name=p.canonical_name,
+                    estimated_1rm_kg=p.estimated_1rm_kg,
+                    best_weight_kg=p.best_weight_kg,
+                    best_reps=p.best_reps,
+                )
+                for p in points
+            ]
         )
 
     @app.get("/api/body_weight", response_model=list[BodyWeightEntry])

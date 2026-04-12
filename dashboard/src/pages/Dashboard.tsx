@@ -6,7 +6,9 @@ import { KpshStackedBar } from '@/components/KpshStackedBar'
 import { IntensityLine } from '@/components/IntensityLine'
 import { KpshByMuscleBar } from '@/components/KpshByMuscleBar'
 import { KpshByPatternBar } from '@/components/KpshByPatternBar'
+import { E1RMTrend } from '@/components/E1RMTrend'
 import { useDashboard } from '@/hooks/useDashboard'
+import { useE1RMTrend } from '@/hooks/useE1RMTrend'
 import { useUsers } from '@/hooks/useUsers'
 import type { DashboardQuery } from '@/api/types'
 
@@ -35,6 +37,13 @@ export default function Dashboard() {
 
   const enabled = query.user_id > 0
   const { data, isLoading, isError, error } = useDashboard(query, enabled)
+
+  const defaultE1RMExercises = ['back_squat', 'bench_press', 'deadlift']
+  const e1rmSince = format(subDays(new Date(), 89), 'yyyy-MM-dd')
+  const e1rmUntil = format(new Date(), 'yyyy-MM-dd')
+  const { data: e1rmData } = useE1RMTrend(
+    query.user_id, defaultE1RMExercises, e1rmSince, e1rmUntil,
+  )
 
   const headerInfo = useMemo(() => {
     if (!data) return null
@@ -84,6 +93,7 @@ export default function Dashboard() {
               <KpshByMuscleBar data={data} />
               <KpshByPatternBar data={data} />
             </div>
+            {e1rmData && <E1RMTrend data={e1rmData} />}
             {data.total_workouts === 0 && (
               <div className="text-neutral-500 text-sm">
                 Нет тренировок за выбранный период.
