@@ -29,6 +29,11 @@ class DashboardFiltersEcho(BaseModel):
     target_only: bool
 
 
+class BodyWeightEntry(BaseModel):
+    date: date
+    weight_kg: float
+
+
 class DashboardResponse(BaseModel):
     days: list[date]
     kpsh_by_bucket: dict[str, list[int]]

@@ -125,15 +125,22 @@ def format_analysis(result: AnalyzeResult) -> str:
     return "\n".join(lines)
 
 
-def format_rm_estimates(estimates: list[OneRMEstimate]) -> str | None:
+def format_rm_estimates(
+    estimates: list[OneRMEstimate],
+    body_weight_kg: float | None = None,
+) -> str | None:
     """Format 1RM estimates block. Returns None if the list is empty."""
     if not estimates:
         return None
     lines = ["Расчётный 1RM:"]
     for e in estimates:
         name = _BIG3_DISPLAY.get(e.canonical_name, e.canonical_name)
+        bw_str = ""
+        if body_weight_kg and body_weight_kg > 0:
+            ratio = e.estimated_1rm_kg / body_weight_kg
+            bw_str = f" / ~{ratio:.2f} BW"
         lines.append(
-            f"  {name}: ~{_fmt_weight(e.estimated_1rm_kg)} кг "
+            f"  {name}: ~{_fmt_weight(e.estimated_1rm_kg)} кг{bw_str} "
             f"(на основе {_fmt_weight(e.best_set_weight_kg)}×{e.best_set_reps})"
         )
     return "\n".join(lines)
@@ -143,9 +150,10 @@ def format_ingest_reply(
     parsed: WorkoutPayload,
     analysis: AnalyzeResult | None,
     rm_estimates: list[OneRMEstimate] | None = None,
+    body_weight_kg: float | None = None,
 ) -> str:
     parts = [format_parsed_workout(parsed)]
-    rm_text = format_rm_estimates(rm_estimates or [])
+    rm_text = format_rm_estimates(rm_estimates or [], body_weight_kg=body_weight_kg)
     if rm_text:
         parts.append("")
         parts.append(rm_text)

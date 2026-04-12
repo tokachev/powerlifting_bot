@@ -47,6 +47,7 @@ class IngestResult:
     payload: WorkoutPayload | None
     analysis: AnalyzeResult | None
     rm_estimates: list[OneRMEstimate] = field(default_factory=list)
+    body_weight_kg: float | None = None
     parse_error: str | None = None
     pending: PendingClarification | None = None
 
@@ -152,11 +153,17 @@ class IngestService:
 
         rm_estimates = await self._compute_rm(conn, user_id=user_id, payload=payload)
 
+        bw_kg: float | None = None
+        latest_bw = await repo.get_latest_body_weight(conn, user_id)
+        if latest_bw is not None:
+            bw_kg = latest_bw[0] / 1000.0
+
         return IngestResult(
             workout_id=workout_id,
             payload=payload,
             analysis=analysis,
             rm_estimates=rm_estimates,
+            body_weight_kg=bw_kg,
         )
 
     async def _compute_rm(
