@@ -44,18 +44,29 @@ export default function Dashboard() {
   return (
     <div className="flex h-full">
       <Sidebar value={query} onChange={setQuery} />
-      <main className="flex-1 overflow-y-auto p-6 space-y-4">
-        <header className="flex items-baseline justify-between">
-          <h1 className="text-xl font-semibold">pwrbot · Dashboard</h1>
-          {headerInfo && <span className="text-sm text-neutral-400">{headerInfo}</span>}
+      <main className="flex-1 overflow-y-auto p-8 space-y-6 animate-fade-in">
+        <header className="flex items-baseline justify-between pb-6 border-b border-white/[0.06]">
+          <div className="flex items-center gap-3">
+            <div className="w-2 h-8 rounded-full bg-accent" />
+            <h1 className="text-2xl font-bold tracking-tight">
+              <span className="text-accent-light">pwrbot</span>
+              <span className="text-neutral-500 mx-2">&middot;</span>
+              <span>Dashboard</span>
+            </h1>
+          </div>
+          {headerInfo && (
+            <span className="text-sm text-neutral-500 font-medium bg-white/[0.03] px-3 py-1 rounded-lg border border-white/[0.06]">
+              {headerInfo}
+            </span>
+          )}
         </header>
 
         {!enabled && (
-          <div className="text-neutral-400 text-sm">Выбери пользователя в сайдбаре.</div>
+          <div className="text-neutral-500 text-sm">Выбери пользователя в сайдбаре.</div>
         )}
 
         {enabled && isLoading && (
-          <div className="text-neutral-400 text-sm">Загрузка…</div>
+          <div className="text-neutral-500 text-sm animate-pulse">Загрузка...</div>
         )}
 
         {enabled && isError && (
@@ -67,7 +78,7 @@ export default function Dashboard() {
         {enabled && data && (
           <>
             <StatsCards data={data} />
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
               <KpshStackedBar data={data} />
               <IntensityLine data={data} />
               <KpshByMuscleBar data={data} />
