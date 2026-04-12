@@ -18,6 +18,7 @@ from pwrbot.parsing.pipeline import ParsingPipeline
 from pwrbot.services.analyze import AnalyzeResult, AnalyzeService
 from pwrbot.services.ingest import IngestService
 from pwrbot.services.max_query import MaxQueryService
+from pwrbot.services.technique import TechniqueAnalysisService
 from tests.conftest import REPO_ROOT
 
 
@@ -42,17 +43,23 @@ async def test_dispatcher_builds_with_all_routers(conn, yaml_config) -> None:
     )
 
     max_query_svc = MaxQueryService(catalog=catalog, cfg=yaml_config)
+
+    from unittest.mock import MagicMock
+
+    technique_svc = MagicMock(spec=TechniqueAnalysisService)
+
     dp = build_dispatcher(
         conn=conn,
         ingest=ingest,
         analyze=analyzer,
         max_query_svc=max_query_svc,
+        technique_svc=technique_svc,
         yaml_config=yaml_config,
         catalog=catalog,
     )
 
-    # 9 routers expected: basic, view, analyze, edit, stats, clarify, weight, max_query, log
-    assert len(dp.sub_routers) == 9
+    # 10 routers expected: basic, view, analyze, edit, stats, clarify, weight, max_query, video, log
+    assert len(dp.sub_routers) == 10
 
 
 def test_format_parsed_workout_basic() -> None:

@@ -114,3 +114,75 @@ class OllamaClient:
             f"LLM failed to return valid {schema_model.__name__} JSON after "
             f"{self._max_retries + 1} attempts. Last error: {last_error}"
         )
+
+    async def chat_vision_json(
+        self,
+        *,
+        system: str,
+        user: str,
+        images: list[str],
+        schema_model: type[T],
+        temperature: float = 0.2,
+        model_override: str | None = None,
+    ) -> T:
+        """Call /api/chat with images *and* ``format=<schema>`` for structured output.
+
+        Combines vision (base64 images) with JSON-schema constraint.
+        Retries on parse/validation failure like :meth:`chat_json`.
+        """
+        model = model_override or self._model
+        schema = schema_model.model_json_schema()
+        last_error: str | None = None
+        last_raw: str | None = None
+
+        for attempt in range(self._max_retries + 1):
+            user_msg = user
+            if last_error is not None:
+                user_msg = (
+                    f"{user}\n\n"
+                    f"Предыдущий ответ был невалидным: {last_error}\n"
+                    f"Предыдущий raw-вывод: {last_raw}\n"
+                    f"Верни корректный JSON по схеме."
+                )
+
+            payload: dict[str, Any] = {
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user_msg, "images": images},
+                ],
+                "format": schema,
+                "stream": False,
+                "options": {"temperature": temperature},
+            }
+
+            log.debug(
+                "ollama_vision_json_request",
+                model=model,
+                attempt=attempt,
+                n_images=len(images),
+            )
+            resp = await self._client.post(
+                f"{self._base_url}/api/chat", json=payload
+            )
+            resp.raise_for_status()
+            raw = resp.json().get("message", {}).get("content", "")
+            last_raw = raw
+
+            try:
+                data = json.loads(raw)
+                return schema_model.model_validate(data)
+            except (json.JSONDecodeError, ValidationError) as exc:
+                last_error = str(exc)
+                log.warning(
+                    "ollama_vision_json_parse_failed",
+                    attempt=attempt,
+                    error=last_error,
+                    raw_preview=raw[:200],
+                )
+                continue
+
+        raise LLMParseError(
+            f"Vision LLM failed to return valid {schema_model.__name__} JSON "
+            f"after {self._max_retries + 1} attempts. Last error: {last_error}"
+        )

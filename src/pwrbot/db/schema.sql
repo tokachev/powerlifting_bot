@@ -79,3 +79,17 @@ CREATE TABLE IF NOT EXISTS personal_records (
 );
 CREATE INDEX IF NOT EXISTS idx_pr_user_exercise ON personal_records(user_id, canonical_name, achieved_at DESC);
 CREATE INDEX IF NOT EXISTS idx_pr_user_time ON personal_records(user_id, achieved_at DESC);
+
+CREATE TABLE IF NOT EXISTS video_analyses (
+    id               INTEGER PRIMARY KEY,
+    user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    exercise_hint    TEXT,                            -- from video caption, nullable
+    frame_count      INTEGER NOT NULL,
+    duration_s       REAL NOT NULL,
+    analysis_text    TEXT NOT NULL,                   -- LLM response
+    model_used       TEXT NOT NULL,
+    analyzed_at      INTEGER NOT NULL,               -- unix seconds
+    telegram_file_id TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_vidanalysis_user_time
+    ON video_analyses(user_id, analyzed_at DESC);

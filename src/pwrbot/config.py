@@ -58,6 +58,15 @@ class LLMConfig(BaseModel):
     max_retries: int = 1
 
 
+class VisionConfig(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    model: str | None = None  # None = use llm.model
+    timeout_s: int = 120
+    max_frames: int = 6
+    resize_width: int = 720
+    max_video_duration_s: int = 60
+
+
 class VolumeLandmark(BaseModel):
     model_config = ConfigDict(frozen=True)
     mev: int
@@ -73,6 +82,7 @@ class YamlConfig(BaseModel):
     thresholds: Thresholds
     volume_landmarks: dict[str, VolumeLandmark] = Field(default_factory=dict)
     llm: LLMConfig
+    vision: VisionConfig = VisionConfig()
 
 
 class Settings(BaseSettings):

@@ -14,6 +14,7 @@ from pwrbot.config import (
     LLMConfig,
     RecoveryThresholds,
     Thresholds,
+    VisionConfig,
     VolumeLandmark,
     WarmupThresholds,
     Windows,
@@ -67,6 +68,7 @@ def yaml_config() -> YamlConfig:
             "core": VolumeLandmark(mev=0, mav=10, mrv=16),
         },
         llm=LLMConfig(),
+        vision=VisionConfig(),
     )
 
 
