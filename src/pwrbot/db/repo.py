@@ -23,6 +23,7 @@ class SetRow:
     rpe: float | None
     is_warmup: bool
     set_index: int
+    bar_velocity_ms: float | None = None
 
 
 @dataclass(slots=True)
@@ -96,8 +97,9 @@ async def insert_workout(
         for s in ex.sets:
             await conn.execute(
                 "INSERT INTO set_entries "
-                "(exercise_entry_id, set_index, reps, weight_g, rpe, is_warmup) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
+                "(exercise_entry_id, set_index, reps, weight_g, rpe, is_warmup, "
+                "bar_velocity_ms) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (
                     exercise_entry_id,
                     s.set_index,
@@ -105,6 +107,7 @@ async def insert_workout(
                     s.weight_g,
                     s.rpe,
                     1 if s.is_warmup else 0,
+                    s.bar_velocity_ms,
                 ),
             )
     await conn.commit()
@@ -159,7 +162,8 @@ async def get_workouts_in_window(
 
     placeholders = ",".join("?" * len(ex_by_id))
     async with conn.execute(
-        f"SELECT exercise_entry_id, set_index, reps, weight_g, rpe, is_warmup "
+        f"SELECT exercise_entry_id, set_index, reps, weight_g, rpe, is_warmup, "
+        f"bar_velocity_ms "
         f"FROM set_entries WHERE exercise_entry_id IN ({placeholders}) "
         f"ORDER BY exercise_entry_id ASC, set_index ASC",
         tuple(ex_by_id.keys()),
@@ -173,6 +177,11 @@ async def get_workouts_in_window(
                     rpe=row["rpe"],
                     is_warmup=bool(row["is_warmup"]),
                     set_index=int(row["set_index"]),
+                    bar_velocity_ms=(
+                        float(row["bar_velocity_ms"])
+                        if row["bar_velocity_ms"] is not None
+                        else None
+                    ),
                 )
             )
 

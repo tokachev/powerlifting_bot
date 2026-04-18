@@ -18,6 +18,7 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from pwrbot.api.routes_powerlifting import router as pl_router
 from pwrbot.api.schemas import (
     BodyWeightEntry,
     CalendarDaySchema,
@@ -126,9 +127,11 @@ def create_app(
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
-        allow_methods=["GET"],
+        allow_methods=["GET", "POST", "PUT"],
         allow_headers=["*"],
     )
+
+    app.include_router(pl_router)
 
     @app.get("/health")
     async def health() -> dict[str, str]:
