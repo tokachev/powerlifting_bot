@@ -40,6 +40,7 @@ from pwrbot.api.pl_schemas import (
     TechniqueNoteItem,
 )
 from pwrbot.db import repo, repo_pl
+from pwrbot.domain.catalog import Catalog
 from pwrbot.metrics.powerlifting import (
     CANONICAL_TO_LIFT,
     LIFT_CANONICAL,
@@ -80,6 +81,29 @@ async def _ensure_user(conn: aiosqlite.Connection, user_id: int) -> None:
             raise HTTPException(status_code=404, detail="user not found")
 
 
+async def _pr_by_lift(
+    conn: aiosqlite.Connection, *, user_id: int, catalog: Catalog
+) -> dict[str, float]:
+    """Best e1RM PR per Big 3 lift, aggregated across all variants sharing
+    the same ``target_group`` and scaled by each variant's coefficient.
+    """
+    out: dict[str, float] = {}
+    for entry in catalog.entries:
+        if entry.target_group is None:
+            continue
+        g = await repo.get_best_e1rm_for_exercise(
+            conn, user_id=user_id, canonical_name=entry.canonical_name
+        )
+        if g is None:
+            continue
+        kg = g / 1000.0
+        coef = entry.main_lift_coefficient or 1.0
+        scaled = kg / coef if coef > 0 else kg
+        if scaled > out.get(entry.target_group, 0.0):
+            out[entry.target_group] = scaled
+    return out
+
+
 # ========================================================= GET /api/pl/overview
 
 
@@ -91,6 +115,7 @@ async def overview(
     is_female: Annotated[bool, Query()] = False,
 ) -> OverviewResponse:
     c: aiosqlite.Connection = request.app.state.conn
+    cat: Catalog = request.app.state.catalog
     await _ensure_user(c, user_id)
 
     today = datetime.now(UTC).date()
@@ -113,14 +138,7 @@ async def overview(
         c, user_id=user_id, since_ts=since_ts, until_ts=until_ts
     )
 
-    # PR per Big3 canonical (from personal_records)
-    pr_by_canonical: dict[str, float] = {}
-    for canonical in LIFT_CANONICAL.values():
-        g = await repo.get_best_e1rm_for_exercise(
-            c, user_id=user_id, canonical_name=canonical
-        )
-        if g is not None:
-            pr_by_canonical[canonical] = g / 1000.0
+    pr_by_lift = await _pr_by_lift(c, user_id=user_id, catalog=cat)
 
     latest_bw_kg: float | None = None
     if bw_rows:
@@ -139,8 +157,9 @@ async def overview(
         workouts,
         today=today,
         bodyweight_kg=latest_bw_kg,
-        pr_by_canonical=pr_by_canonical,
+        pr_by_lift=pr_by_lift,
         next_meet_targets_kg=targets_kg,
+        catalog=cat,
     )
 
     # KPI: total Big3 e1RM + Wilks/DOTS if bodyweight known
@@ -165,7 +184,7 @@ async def overview(
     intensity_by_lift: dict[str, list[LiftWeekPoint]] = {}
     for lift in LIFTS:
         series = compute_lift_weekly(
-            workouts, LIFT_CANONICAL[lift], weeks=weeks, today=today
+            workouts, target_group=lift, catalog=cat, weeks=weeks, today=today
         )
         points = [
             LiftWeekPoint(
@@ -202,7 +221,7 @@ async def overview(
         latest_recovery_pct=readiness_s.latest_recovery_pct,
     )
 
-    accessories_raw = compute_accessories_overview(workouts, today=today)
+    accessories_raw = compute_accessories_overview(workouts, today=today, catalog=cat)
     accessories = [
         AccessoryItem(
             canonical_name=a.canonical_name,
@@ -230,7 +249,7 @@ async def overview(
         for ts, g in bw_rows
     ]
 
-    recent_raw = compute_recent_sessions(workouts, limit=7)
+    recent_raw = compute_recent_sessions(workouts, limit=7, catalog=cat)
     recent = [
         RecentSessionItem(
             date=s.date,
@@ -316,6 +335,7 @@ async def lift_detail(
     if lift not in LIFTS:
         raise HTTPException(status_code=400, detail=f"invalid lift: {lift}")
     c: aiosqlite.Connection = request.app.state.conn
+    cat: Catalog = request.app.state.catalog
     await _ensure_user(c, user_id)
 
     today = datetime.now(UTC).date()
@@ -332,10 +352,7 @@ async def lift_detail(
     bw_latest = await repo.get_latest_body_weight(c, user_id)
     bw_kg = bw_latest[0] / 1000.0 if bw_latest else None
 
-    pr_g = await repo.get_best_e1rm_for_exercise(
-        c, user_id=user_id, canonical_name=canonical
-    )
-    pr_kg = pr_g / 1000.0 if pr_g else 0.0
+    pr_by_lift = await _pr_by_lift(c, user_id=user_id, catalog=cat)
 
     next_meet_row = await repo_pl.get_next_meet(c, user_id=user_id)
     target_kg = 0.0
@@ -350,14 +367,17 @@ async def lift_detail(
         workouts,
         today=today,
         bodyweight_kg=bw_kg,
-        pr_by_canonical={canonical: pr_kg} if pr_kg else {},
+        pr_by_lift=pr_by_lift,
         next_meet_targets_kg={lift: target_kg},
+        catalog=cat,
     )
     me = next(b for b in big3 if b.lift == lift)
 
     phases = await repo_pl.list_phases(c, user_id=user_id, since_ts=since_ts, until_ts=until_ts)
     phase_map = phases_to_week_map(phases, weeks=weeks, today=today)
-    weekly_raw = compute_lift_weekly(workouts, canonical, weeks=weeks, today=today)
+    weekly_raw = compute_lift_weekly(
+        workouts, target_group=lift, catalog=cat, weeks=weeks, today=today
+    )
     weekly = [
         LiftWeekPoint(
             iso_week=p.iso_week,
@@ -416,12 +436,14 @@ async def lift_detail(
         for t in tech_rows
     ]
 
-    # ACWR from this lift's daily tonnage
+    # ACWR from this lift's daily tonnage — includes all target_group variants
+    # (sumo_deadlift, front_squat, paused_bench, etc.) as raw tonnage.
     lift_tonnage: dict[date, float] = {}
     for w in workouts:
         d = datetime.fromtimestamp(w.performed_at, tz=UTC).date()
         for ex in w.exercises:
-            if ex.canonical_name != canonical:
+            entry = cat.by_canonical(ex.canonical_name or "")
+            if entry is None or entry.target_group != lift:
                 continue
             for s in ex.sets:
                 if s.is_warmup or s.reps <= 0:
@@ -473,7 +495,8 @@ async def history(
     workouts = await repo.get_workouts_in_window(
         c, user_id=user_id, since_ts=yr_since, until_ts=yr_until
     )
-    growth = compute_rm_growth_yoy(workouts, today=today)
+    cat: Catalog = request.app.state.catalog
+    growth = compute_rm_growth_yoy(workouts, today=today, catalog=cat)
 
     # PR cards for Big3
     pr_cards: list[PersonalRecordCard] = []
