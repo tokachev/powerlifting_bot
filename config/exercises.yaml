@@ -9,18 +9,39 @@
 # muscle_group    — один из: legs | chest | back | shoulders | arms | core. Prime-mover
 #                    мышечная группа для фильтра дашборда (bodybuilding-style split).
 #                    Deadlift относим к back (trap/erector/lat), romanian/hip_thrust — к legs.
+# main_lift_coefficient — обязателен, если задан target_group. Отношение 1RM варианта
+#                    к 1RM основного соревновательного движения. Используется в
+#                    metrics/powerlifting.py: main_lift_e1rm = estimate_1rm(variant) / coef.
+#                    1.0 = соревновательное движение; <1.0 = вариант даёт меньше, чем
+#                    основной лифт; >1.0 = вариант позволяет больше (борды, block pull).
 
 back_squat:
   movement_pattern: squat
   target_group: squat
+  main_lift_coefficient: 1.00
   muscle_group: legs
   aliases: [присед, приседания, приседания со штангой, присед со штангой, бэк сквот, back squat]
 
 front_squat:
   movement_pattern: squat
   target_group: squat
+  main_lift_coefficient: 0.85
   muscle_group: legs
   aliases: [фронт присед, фронтальный присед, фронт сквот, front squat]
+
+pause_squat:
+  movement_pattern: squat
+  target_group: squat
+  main_lift_coefficient: 0.90
+  muscle_group: legs
+  aliases: [присед с паузой, пауза присед, pause squat, присед с остановкой, присед с паузой внизу]
+
+box_squat:
+  movement_pattern: squat
+  target_group: squat
+  main_lift_coefficient: 0.95
+  muscle_group: legs
+  aliases: [присед на бокс, присед в бокс, box squat, бокс сквот, присед на ящик]
 
 overhead_squat:
   movement_pattern: squat
@@ -60,14 +81,37 @@ calf_raise:
 deadlift:
   movement_pattern: hinge
   target_group: deadlift
+  main_lift_coefficient: 1.00
   muscle_group: back
   aliases: [становая, становая тяга, тяга становая, deadlift, дедлифт]
 
 sumo_deadlift:
   movement_pattern: hinge
   target_group: deadlift
+  main_lift_coefficient: 1.00
   muscle_group: back
   aliases: [сумо, становая сумо, сумо тяга, sumo deadlift]
+
+paused_deadlift:
+  movement_pattern: hinge
+  target_group: deadlift
+  main_lift_coefficient: 0.90
+  muscle_group: back
+  aliases: [тяга с паузой, становая с паузой, paused deadlift, тяга с паузами, становая с паузами]
+
+deficit_deadlift:
+  movement_pattern: hinge
+  target_group: deadlift
+  main_lift_coefficient: 0.90
+  muscle_group: back
+  aliases: [тяга с дефицита, становая с дефицита, deficit deadlift, тяга с плинта вниз, становая с возвышенности]
+
+block_pull:
+  movement_pattern: hinge
+  target_group: deadlift
+  main_lift_coefficient: 1.08
+  muscle_group: back
+  aliases: [тяга с плинтов, становая с плинтов, block pull, тяга с блоков, становая с блоков, тяга с подставки]
 
 romanian_deadlift:
   movement_pattern: hinge
@@ -92,14 +136,44 @@ hip_abduction:
 bench_press:
   movement_pattern: push
   target_group: bench
+  main_lift_coefficient: 1.00
   muscle_group: chest
   aliases: [жим, жим лежа, жим штанги лежа, жим лёжа, bench press, бенч, жим с резиной, жим с резинкой, жим штанги лежа с резиной]
 
 incline_bench_press:
   movement_pattern: push
   target_group: bench
+  main_lift_coefficient: 0.80
   muscle_group: chest
   aliases: [жим на наклонной, наклонный жим, incline bench press, жим наклонный]
+
+paused_bench_press:
+  movement_pattern: push
+  target_group: bench
+  main_lift_coefficient: 0.92
+  muscle_group: chest
+  aliases: [жим с паузой, жим лежа с паузой, paused bench press, жим с паузами, жим с остановкой]
+
+close_grip_bench_press:
+  movement_pattern: push
+  target_group: bench
+  main_lift_coefficient: 0.92
+  muscle_group: chest
+  aliases: [узкий жим, жим узким хватом, close grip bench, close grip bench press, жим лежа узким хватом]
+
+feet_elevated_bench_press:
+  movement_pattern: push
+  target_group: bench
+  main_lift_coefficient: 0.95
+  muscle_group: chest
+  aliases: [жим с ногами на лавке, жим ноги на лавке, feet elevated bench, жим с поднятыми ногами, жим с ногами на скамье]
+
+board_press:
+  movement_pattern: push
+  target_group: bench
+  main_lift_coefficient: 1.05
+  muscle_group: chest
+  aliases: [жим с бордом, жим с досок, board press, жим с борда, жим лежа с бордом]
 
 dumbbell_bench_press:
   movement_pattern: push

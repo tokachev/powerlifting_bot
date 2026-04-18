@@ -29,6 +29,11 @@ class CatalogEntry:
     target_group: str | None = None
     muscle_group: str | None = None
     is_bilateral_dumbbell: bool = False
+    # Ratio of this variant's 1RM to the primary competition lift 1RM.
+    # Primary lifts (back_squat, bench_press, deadlift) are 1.0; variants like
+    # front_squat are <1.0 so that main-lift max = variant_1RM / coefficient.
+    # Required for entries with target_group set; None for non-SBD exercises.
+    main_lift_coefficient: float | None = None
 
 
 _PUNCT_RE = re.compile(r"[^\w\s]", re.UNICODE)
@@ -129,6 +134,34 @@ def load_catalog(path: Path) -> Catalog:
 
         is_bilateral_dumbbell = bool(body.get("is_bilateral_dumbbell", False))
 
+        coef_raw = body.get("main_lift_coefficient")
+        main_lift_coefficient: float | None
+        if coef_raw is None:
+            main_lift_coefficient = None
+        else:
+            try:
+                main_lift_coefficient = float(coef_raw)
+            except (TypeError, ValueError) as e:
+                raise ValueError(
+                    f"{canonical_name}: main_lift_coefficient must be a number, "
+                    f"got {coef_raw!r}"
+                ) from e
+            if not 0.0 < main_lift_coefficient <= 2.0:
+                raise ValueError(
+                    f"{canonical_name}: main_lift_coefficient must be in (0, 2], "
+                    f"got {main_lift_coefficient}"
+                )
+        if target_group is not None and main_lift_coefficient is None:
+            raise ValueError(
+                f"{canonical_name}: main_lift_coefficient is required when "
+                f"target_group is set"
+            )
+        if target_group is None and main_lift_coefficient is not None:
+            raise ValueError(
+                f"{canonical_name}: main_lift_coefficient requires target_group "
+                f"to be set"
+            )
+
         entries.append(
             CatalogEntry(
                 canonical_name=canonical_name,
@@ -137,6 +170,7 @@ def load_catalog(path: Path) -> Catalog:
                 target_group=target_group,
                 muscle_group=muscle_group,
                 is_bilateral_dumbbell=is_bilateral_dumbbell,
+                main_lift_coefficient=main_lift_coefficient,
             )
         )
     return Catalog(entries)

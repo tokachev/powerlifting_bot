@@ -12,9 +12,12 @@ from datetime import UTC, date, datetime, timedelta
 
 from pwrbot.db.repo import WorkoutRow
 from pwrbot.db.repo_pl import MeetRow, NextMeetRow, PhaseRow, RecoveryRow, unix_to_date
+from pwrbot.domain.catalog import Catalog, CatalogEntry
 from pwrbot.metrics.util import iso_week_label
 from pwrbot.rules.one_rm import estimate_1rm
 
+# Display-label canonical for each Big 3 card. Matching is done by target_group,
+# not by these names — they are only used as a default label on LiftSummary.
 LIFT_CANONICAL: dict[str, str] = {
     "squat": "back_squat",
     "bench": "bench_press",
@@ -23,6 +26,18 @@ LIFT_CANONICAL: dict[str, str] = {
 CANONICAL_TO_LIFT: dict[str, str] = {v: k for k, v in LIFT_CANONICAL.items()}
 LIFTS: tuple[str, ...] = ("squat", "bench", "deadlift")
 BIG3_CANONICALS: frozenset[str] = frozenset(LIFT_CANONICAL.values())
+
+
+def _apply_coefficient(e1rm: float, entry: CatalogEntry | None) -> float:
+    """Scale variant's e1RM to estimate the primary lift's 1RM.
+
+    Primary lifts have coefficient 1.0, variants <1.0 (e.g. front_squat 0.85
+    means 100 kg × 5 front squat ≈ 132 kg back squat 1RM).
+    """
+    coef = entry.main_lift_coefficient if entry else None
+    if not coef or coef <= 0:
+        return e1rm
+    return e1rm / coef
 
 
 # ============================================================== Wilks 2020
@@ -189,15 +204,27 @@ def _ts_to_date(ts: int) -> date:
 
 
 def _best_e1rm_in_window(
-    workouts: list[WorkoutRow], canonical: str, since: date, until: date
+    workouts: list[WorkoutRow],
+    *,
+    target_group: str,
+    catalog: Catalog,
+    since: date,
+    until: date,
 ) -> float:
+    """Best estimated 1RM for the primary lift in [since, until].
+
+    Iterates any exercise whose catalog target_group matches, applies the
+    variant coefficient to scale its e1RM up to the primary lift equivalent,
+    and returns the max across sets.
+    """
     best = 0.0
     for w in workouts:
         d = _ts_to_date(w.performed_at)
         if d < since or d > until:
             continue
         for ex in w.exercises:
-            if ex.canonical_name != canonical:
+            entry = catalog.by_canonical(ex.canonical_name or "")
+            if entry is None or entry.target_group != target_group:
                 continue
             for s in ex.sets:
                 if s.is_warmup or s.reps <= 0 or s.reps > 12:
@@ -205,10 +232,20 @@ def _best_e1rm_in_window(
                 kg = s.weight_g / 1000.0
                 if kg <= 0:
                     continue
-                e = estimate_1rm(kg, s.reps)
+                e = _apply_coefficient(estimate_1rm(kg, s.reps), entry)
                 if e > best:
                     best = e
     return round(best, 1)
+
+
+def _session_has_target_group(
+    w: WorkoutRow, target_group: str, catalog: Catalog
+) -> bool:
+    for ex in w.exercises:
+        entry = catalog.by_canonical(ex.canonical_name or "")
+        if entry is not None and entry.target_group == target_group:
+            return True
+    return False
 
 
 def compute_big3_summary(
@@ -216,32 +253,44 @@ def compute_big3_summary(
     *,
     today: date,
     bodyweight_kg: float | None,
-    pr_by_canonical: dict[str, float],
+    pr_by_lift: dict[str, float],
     next_meet_targets_kg: dict[str, float],
+    catalog: Catalog,
 ) -> list[LiftSummary]:
-    """Compute Big 3 summary for the hero cards on the Dashboard."""
+    """Compute Big 3 summary for the hero cards on the Dashboard.
+
+    Matches exercises by ``target_group`` (squat|bench|deadlift) rather than by
+    canonical name so that variants like ``sumo_deadlift`` or ``front_squat``
+    contribute, scaled by ``main_lift_coefficient``.
+    ``pr_by_lift`` is keyed by lift ("squat"|"bench"|"deadlift").
+    """
     out: list[LiftSummary] = []
     cur_since = today - timedelta(days=27)
     prev_since = today - timedelta(days=55)
     prev_until = today - timedelta(days=28)
     for lift in LIFTS:
-        canonical = LIFT_CANONICAL[lift]
-        cur = _best_e1rm_in_window(workouts, canonical, cur_since, today)
-        prev = _best_e1rm_in_window(workouts, canonical, prev_since, prev_until)
+        cur = _best_e1rm_in_window(
+            workouts, target_group=lift, catalog=catalog,
+            since=cur_since, until=today,
+        )
+        prev = _best_e1rm_in_window(
+            workouts, target_group=lift, catalog=catalog,
+            since=prev_since, until=prev_until,
+        )
         delta_pct = 0.0 if prev <= 0 else round((cur - prev) / prev * 100.0, 1)
-        pr = pr_by_canonical.get(canonical, cur)
+        pr = pr_by_lift.get(lift, cur)
         target = next_meet_targets_kg.get(lift, 0.0)
         pct_bw = None if not bodyweight_kg else round(cur / bodyweight_kg * 100.0, 1)
         sessions = sum(
             1
             for w in workouts
             if cur_since <= _ts_to_date(w.performed_at) <= today
-            and any(ex.canonical_name == canonical for ex in w.exercises)
+            and _session_has_target_group(w, lift, catalog)
         )
         out.append(
             LiftSummary(
                 lift=lift,
-                canonical_name=canonical,
+                canonical_name=LIFT_CANONICAL[lift],
                 current_e1rm_kg=cur,
                 prev_e1rm_kg=prev,
                 delta_pct=delta_pct,
@@ -268,16 +317,20 @@ class LiftWeek:
 
 def compute_lift_weekly(
     workouts: list[WorkoutRow],
-    canonical: str,
     *,
+    target_group: str,
+    catalog: Catalog,
     weeks: int,
     today: date,
 ) -> list[LiftWeek]:
-    """Per-ISO-week series for a single lift over the last `weeks` weeks."""
+    """Per-ISO-week series for a single lift (squat|bench|deadlift) over
+    the last ``weeks`` weeks. Matches by catalog ``target_group`` and applies
+    each variant's ``main_lift_coefficient`` before taking the weekly max.
+    """
     since = today - timedelta(weeks=weeks)
     # Collect all weeks present + pad to `weeks`
     by_week_reps: dict[str, list[tuple[int, float, float | None]]] = defaultdict(list)
-    # reps, weight_kg, velocity_ms
+    # reps, weight_kg (coefficient-scaled), velocity_ms
     by_week_best_e1rm: dict[str, float] = defaultdict(float)
 
     for w in workouts:
@@ -286,19 +339,24 @@ def compute_lift_weekly(
             continue
         wlabel = iso_week_label(d)
         for ex in w.exercises:
-            if ex.canonical_name != canonical:
+            entry = catalog.by_canonical(ex.canonical_name or "")
+            if entry is None or entry.target_group != target_group:
                 continue
+            coef = entry.main_lift_coefficient or 1.0
             for s in ex.sets:
                 if s.is_warmup or s.reps <= 0:
                     continue
                 kg = s.weight_g / 1000.0
                 if kg <= 0:
                     continue
+                # Scale raw weight to "equivalent in primary lift" so that
+                # tonnage/intensity% are expressed in primary-lift terms.
+                scaled_kg = kg / coef if coef > 0 else kg
                 by_week_reps[wlabel].append(
-                    (s.reps, kg, getattr(s, "bar_velocity_ms", None))
+                    (s.reps, scaled_kg, getattr(s, "bar_velocity_ms", None))
                 )
                 if s.reps <= 12:
-                    e = estimate_1rm(kg, s.reps)
+                    e = _apply_coefficient(estimate_1rm(kg, s.reps), entry)
                     if e > by_week_best_e1rm[wlabel]:
                         by_week_best_e1rm[wlabel] = e
 
@@ -350,9 +408,11 @@ class RecentSession:
 
 
 def compute_recent_sessions(
-    workouts: list[WorkoutRow], *, limit: int = 7
+    workouts: list[WorkoutRow], *, limit: int = 7, catalog: Catalog,
 ) -> list[RecentSession]:
-    """Last `limit` workouts, reverse chronological."""
+    """Last `limit` workouts, reverse chronological. Session focus is the
+    target_group (squat|bench|deadlift) with the most reps, or "accessory".
+    """
     sorted_w = sorted(workouts, key=lambda w: w.performed_at, reverse=True)[:limit]
     out: list[RecentSession] = []
     for w in sorted_w:
@@ -363,7 +423,8 @@ def compute_recent_sessions(
         total_vol = 0.0
         rpe_vals: list[float] = []
         for ex in w.exercises:
-            lift = CANONICAL_TO_LIFT.get(ex.canonical_name or "", "accessory")
+            entry = catalog.by_canonical(ex.canonical_name or "")
+            lift = entry.target_group if entry and entry.target_group else "accessory"
             for s in ex.sets:
                 if s.is_warmup or s.reps <= 0:
                     continue
@@ -406,10 +467,15 @@ def compute_accessories_overview(
     workouts: list[WorkoutRow],
     *,
     today: date,
-    big3_canonicals: frozenset[str] = BIG3_CANONICALS,
+    catalog: Catalog,
     limit: int = 8,
 ) -> list[AccessoryOverview]:
-    """Non-Big3 exercises, ranked by current e1RM, with delta vs. prior 28 days."""
+    """Non-SBD exercises, ranked by current e1RM, with delta vs. prior 28 days.
+
+    Any exercise with a ``target_group`` in the catalog (squat|bench|deadlift
+    and all their variants like sumo, front, paused, etc.) is excluded and
+    counted in the Big 3 instead.
+    """
     cur_since = today - timedelta(days=27)
     prev_since = today - timedelta(days=55)
     prev_until = today - timedelta(days=28)
@@ -420,7 +486,10 @@ def compute_accessories_overview(
     for w in workouts:
         d = _ts_to_date(w.performed_at)
         for ex in w.exercises:
-            if not ex.canonical_name or ex.canonical_name in big3_canonicals:
+            if not ex.canonical_name:
+                continue
+            entry = catalog.by_canonical(ex.canonical_name)
+            if entry is not None and entry.target_group is not None:
                 continue
             for s in ex.sets:
                 if s.is_warmup or s.reps <= 0 or s.reps > 12:
@@ -630,16 +699,21 @@ class RmGrowth:
 
 
 def compute_rm_growth_yoy(
-    workouts: list[WorkoutRow], *, today: date
+    workouts: list[WorkoutRow], *, today: date, catalog: Catalog
 ) -> list[RmGrowth]:
     """Compare best e1RM in [today-365d .. today-183d] vs [today-182d..today] for Big 3."""
     window_start = today - timedelta(days=365)
     mid = today - timedelta(days=183)
     out: list[RmGrowth] = []
     for lift in LIFTS:
-        canonical = LIFT_CANONICAL[lift]
-        start = _best_e1rm_in_window(workouts, canonical, window_start, mid)
-        end = _best_e1rm_in_window(workouts, canonical, mid, today)
+        start = _best_e1rm_in_window(
+            workouts, target_group=lift, catalog=catalog,
+            since=window_start, until=mid,
+        )
+        end = _best_e1rm_in_window(
+            workouts, target_group=lift, catalog=catalog,
+            since=mid, until=today,
+        )
         delta = round(end - start, 1)
         pct = round((delta / start * 100.0), 1) if start > 0 else 0.0
         out.append(RmGrowth(lift=lift, start_kg=start, end_kg=end, delta_kg=delta, delta_pct=pct))
