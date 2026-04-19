@@ -46,6 +46,7 @@ from pwrbot.metrics.powerlifting import (
     LIFT_CANONICAL,
     LIFTS,
     acwr_from_daily_tonnage,
+    best_weight_by_min_reps,
     compute_accessories_overview,
     compute_big3_summary,
     compute_calendar_heatmap_16w,
@@ -390,7 +391,14 @@ async def lift_detail(
         for p in weekly_raw
     ]
 
-    rm_table = rep_max_table(me.current_e1rm_kg)
+    floor_by_min_reps = best_weight_by_min_reps(
+        workouts,
+        target_group=lift,
+        catalog=cat,
+        since=today - timedelta(days=27),
+        until=today,
+    )
+    rm_table = rep_max_table(me.current_e1rm_kg, floor_by_min_reps=floor_by_min_reps)
     rep_max = [RepMaxEntry(reps=r, weight_kg=w) for r, w in rm_table.items()]
 
     recs = compute_set_recommendations(me.current_e1rm_kg)

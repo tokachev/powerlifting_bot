@@ -14,7 +14,7 @@ from pwrbot.db.repo import WorkoutRow
 from pwrbot.db.repo_pl import MeetRow, NextMeetRow, PhaseRow, RecoveryRow, unix_to_date
 from pwrbot.domain.catalog import Catalog, CatalogEntry
 from pwrbot.metrics.util import iso_week_label
-from pwrbot.rules.one_rm import estimate_1rm
+from pwrbot.rules.one_rm import estimate_1rm, estimate_nrm
 
 # Display-label canonical for each Big 3 card. Matching is done by target_group,
 # not by these names — they are only used as a default label on LiftSummary.
@@ -127,17 +127,72 @@ def ipf_gl_points(
 # ============================================================== Rep Max Table
 
 
-def rep_max_table(e1rm_kg: float) -> dict[int, float]:
-    """Inverse Epley: for each rep count R, compute weight that at R reps gives this 1RM.
+REP_MAX_REPS: tuple[int, ...] = (1, 2, 3, 5, 8, 10)
 
-    For R=1, weight == e1rm (identity — matches estimate_1rm(w, 1) == w).
-    For R>1: weight = e1rm / (1 + R/30).
+
+def best_weight_by_min_reps(
+    workouts: list[WorkoutRow],
+    *,
+    target_group: str,
+    catalog: Catalog,
+    since: date,
+    until: date,
+) -> dict[int, float]:
+    """For each R in REP_MAX_REPS: max primary-lift-equivalent weight among
+    non-warmup sets in [since, until] whose reps >= R.
+
+    Variant weights are scaled up via ``1 / main_lift_coefficient`` to express
+    them in the primary lift terms (same convention as compute_lift_weekly).
+    Sets with reps > 12 are ignored (formula-unreliable and not meaningful here).
+    """
+    candidates: list[tuple[int, float]] = []
+    for w in workouts:
+        d = _ts_to_date(w.performed_at)
+        if d < since or d > until:
+            continue
+        for ex in w.exercises:
+            entry = catalog.by_canonical(ex.canonical_name or "")
+            if entry is None or entry.target_group != target_group:
+                continue
+            coef = entry.main_lift_coefficient or 1.0
+            for s in ex.sets:
+                if s.is_warmup or s.reps <= 0 or s.reps > 12:
+                    continue
+                kg = s.weight_g / 1000.0
+                if kg <= 0:
+                    continue
+                scaled_kg = kg / coef if coef > 0 else kg
+                candidates.append((s.reps, scaled_kg))
+
+    out: dict[int, float] = {r: 0.0 for r in REP_MAX_REPS}
+    for r in REP_MAX_REPS:
+        best = 0.0
+        for set_reps, kg in candidates:
+            if set_reps >= r and kg > best:
+                best = kg
+        out[r] = round(best, 1)
+    return out
+
+
+def rep_max_table(
+    e1rm_kg: float,
+    *,
+    floor_by_min_reps: dict[int, float] | None = None,
+) -> dict[int, float]:
+    """For each rep count R in REP_MAX_REPS, compute weight at R reps that yields this 1RM.
+
+    Uses ``estimate_nrm`` (Brzycki inverse for R 1-6, Epley inverse for 7+) to
+    stay symmetric with ``estimate_1rm``. When ``floor_by_min_reps`` is given,
+    each entry is raised to ``max(formula, floor_by_min_reps[R])`` so the table
+    can never fall below a set the athlete actually performed.
     """
     if e1rm_kg <= 0:
-        return {r: 0.0 for r in (1, 2, 3, 5, 8, 10)}
+        return {r: 0.0 for r in REP_MAX_REPS}
+    floor = floor_by_min_reps or {}
     out: dict[int, float] = {}
-    for r in (1, 2, 3, 5, 8, 10):
-        out[r] = round(e1rm_kg, 1) if r == 1 else round(e1rm_kg / (1 + r / 30.0), 1)
+    for r in REP_MAX_REPS:
+        formula = estimate_nrm(e1rm_kg, r)
+        out[r] = round(max(formula, floor.get(r, 0.0)), 1)
     return out
 
 

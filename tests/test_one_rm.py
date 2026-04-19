@@ -5,8 +5,10 @@ from __future__ import annotations
 from pwrbot.db.repo import ExerciseRow, SetRow, WorkoutRow
 from pwrbot.rules.one_rm import (
     brzycki_1rm,
+    brzycki_nrm,
     compute_1rm_estimates,
     epley_1rm,
+    epley_nrm,
     estimate_1rm,
     estimate_nrm,
     find_best_set,
@@ -94,10 +96,40 @@ def test_estimate_nrm_reps_1():
     assert estimate_nrm(150.0, 1) == 150.0
 
 
-def test_estimate_nrm_5reps():
-    # nRM = 1RM * 30 / (30 + 5) = 150 * 30 / 35 ≈ 128.6
+def test_estimate_nrm_uses_brzycki_inverse_low_reps():
+    # reps=5, Brzycki inverse: 150 * (37-5)/36 = 150 * 32/36 = 133.33
     result = estimate_nrm(150.0, 5)
-    assert abs(result - 128.6) < 0.1
+    expected = round(brzycki_nrm(150.0, 5), 1)
+    assert result == expected
+    assert abs(result - 133.3) < 0.1
+
+
+def test_estimate_nrm_uses_epley_inverse_high_reps():
+    # reps=8, Epley inverse: 150 * 30 / 38
+    result = estimate_nrm(150.0, 8)
+    expected = round(epley_nrm(150.0, 8), 1)
+    assert result == expected
+
+
+def test_estimate_nrm_boundary_r6_r7():
+    # R=6 uses Brzycki, R=7 uses Epley — values should be close but computed by different formulas
+    r6 = estimate_nrm(200.0, 6)
+    r7 = estimate_nrm(200.0, 7)
+    assert r6 == round(brzycki_nrm(200.0, 6), 1)
+    assert r7 == round(epley_nrm(200.0, 7), 1)
+    assert r6 > r7  # more reps → lighter
+
+
+def test_estimate_nrm_symmetric_with_estimate_1rm():
+    """200kg x 3 reps → 1RM. Reversing with estimate_nrm for 3 reps must return 200."""
+    one_rm = estimate_1rm(200.0, 3)
+    assert estimate_nrm(one_rm, 3) == 200.0
+
+
+def test_estimate_nrm_monotonic_decreasing():
+    one_rm = 200.0
+    vals = [estimate_nrm(one_rm, r) for r in (1, 2, 3, 5, 8, 10)]
+    assert all(vals[i] >= vals[i + 1] for i in range(len(vals) - 1))
 
 
 def test_estimate_nrm_clamped():

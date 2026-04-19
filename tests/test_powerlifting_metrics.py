@@ -12,6 +12,7 @@ from pwrbot.db.repo import ExerciseRow, SetRow, WorkoutRow
 from pwrbot.domain.catalog import Catalog, load_catalog
 from pwrbot.metrics.powerlifting import (
     acwr_from_daily_tonnage,
+    best_weight_by_min_reps,
     compute_accessories_overview,
     compute_big3_summary,
     compute_lift_weekly,
@@ -21,6 +22,7 @@ from pwrbot.metrics.powerlifting import (
     rep_max_table,
     wilks_score,
 )
+from pwrbot.rules.one_rm import estimate_1rm
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -90,6 +92,90 @@ def test_rep_max_monotonic_decreasing():
 
 def test_rep_max_zero_input():
     assert rep_max_table(0.0) == {1: 0.0, 2: 0.0, 3: 0.0, 5: 0.0, 8: 0.0, 10: 0.0}
+
+
+def test_rep_max_symmetric_with_estimate_1rm():
+    """200kg x 3 squat → 1RM via Brzycki. Reversing via rep_max_table[3] must give 200."""
+    one_rm = estimate_1rm(200.0, 3)
+    table = rep_max_table(one_rm)
+    assert table[3] == 200.0
+    # 2RM must be >= 3RM (more reps → lighter)
+    assert table[2] >= table[3]
+
+
+def test_rep_max_with_floor_raises_below_actual(catalog: Catalog):
+    """User did 200x3 squat yesterday. 2RM estimate would be below 200 without floor.
+    With floor_by_min_reps, the table must never drop below what was actually lifted.
+    """
+    today = date(2026, 4, 19)
+    workouts = [_workout(today - timedelta(days=1), [
+        _ex("back_squat", "squat", [_set(3, 200)]),
+    ])]
+    floor = best_weight_by_min_reps(
+        workouts, target_group="squat", catalog=catalog,
+        since=today - timedelta(days=27), until=today,
+    )
+    one_rm = estimate_1rm(200.0, 3)
+    table = rep_max_table(one_rm, floor_by_min_reps=floor)
+    assert table[3] == 200.0   # exactly what was lifted
+    assert table[2] >= 200.0   # can't be below a heavier set he did for more reps
+    assert table[1] >= 200.0
+
+
+def test_best_weight_by_min_reps_primary_lift(catalog: Catalog):
+    today = date(2026, 4, 19)
+    workouts = [_workout(today - timedelta(days=1), [
+        _ex("back_squat", "squat", [_set(5, 150), _set(3, 180)]),
+    ])]
+    out = best_weight_by_min_reps(
+        workouts, target_group="squat", catalog=catalog,
+        since=today - timedelta(days=27), until=today,
+    )
+    # reps >= 1: max = 180; >= 2: 180; >= 3: 180; >= 5: 150; >= 8: 0; >= 10: 0
+    assert out[1] == 180.0
+    assert out[2] == 180.0
+    assert out[3] == 180.0
+    assert out[5] == 150.0
+    assert out[8] == 0.0
+    assert out[10] == 0.0
+
+
+def test_best_weight_by_min_reps_variant_applies_coefficient(catalog: Catalog):
+    """front_squat 100x5 with coef 0.85 → primary-lift equivalent ≈ 117.6kg for R<=5."""
+    today = date(2026, 4, 19)
+    workouts = [_workout(today - timedelta(days=1), [
+        _ex("front_squat", "squat", [_set(5, 100)]),
+    ])]
+    out = best_weight_by_min_reps(
+        workouts, target_group="squat", catalog=catalog,
+        since=today - timedelta(days=27), until=today,
+    )
+    assert abs(out[5] - (100 / 0.85)) < 0.1
+    assert abs(out[3] - (100 / 0.85)) < 0.1
+    assert out[8] == 0.0
+
+
+def test_best_weight_by_min_reps_skips_warmup_and_out_of_window(catalog: Catalog):
+    today = date(2026, 4, 19)
+    workouts = [
+        _workout(today - timedelta(days=1), [
+            _ex("back_squat", "squat", [
+                _set(3, 200, warmup=True),  # skip warmup
+                _set(5, 100),
+            ]),
+        ]),
+        _workout(today - timedelta(days=40), [  # out of window
+            _ex("back_squat", "squat", [_set(3, 220)]),
+        ]),
+    ]
+    out = best_weight_by_min_reps(
+        workouts, target_group="squat", catalog=catalog,
+        since=today - timedelta(days=27), until=today,
+    )
+    assert out[1] == 100.0
+    assert out[3] == 100.0  # 5-rep set qualifies (5 >= 3)
+    assert out[5] == 100.0
+    assert out[8] == 0.0   # no set with reps >= 8
 
 
 def test_acwr_sweet_spot():

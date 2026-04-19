@@ -46,11 +46,25 @@ def estimate_1rm(weight_kg: float, reps: int) -> float:
     return round(epley_1rm(weight_kg, reps), 1)
 
 
+def brzycki_nrm(one_rm_kg: float, reps: int) -> float:
+    """Inverse Brzycki: weight at `reps` reps that yields this 1RM."""
+    if reps <= 1:
+        return one_rm_kg
+    return one_rm_kg * (37 - reps) / 36
+
+
+def epley_nrm(one_rm_kg: float, reps: int) -> float:
+    """Inverse Epley: weight at `reps` reps that yields this 1RM."""
+    if reps <= 1:
+        return one_rm_kg
+    return one_rm_kg * 30 / (30 + reps)
+
+
 def estimate_nrm(one_rm_kg: float, reps: int) -> float:
-    """Estimate nRM from a known 1RM using Epley inverse: 1RM * 30 / (30 + reps)."""
+    """Estimate nRM from a 1RM. Mirrors estimate_1rm: Brzycki for reps 1-6, Epley for 7+."""
     if reps <= 1:
         return round(one_rm_kg, 1)
-    result = one_rm_kg * 30 / (30 + reps)
+    result = brzycki_nrm(one_rm_kg, reps) if reps <= 6 else epley_nrm(one_rm_kg, reps)
     return round(max(result, 0.0), 1)
 
 
