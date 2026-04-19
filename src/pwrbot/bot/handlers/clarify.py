@@ -81,6 +81,10 @@ async def on_pick(
     conn: aiosqlite.Connection,
     ingest: IngestService,
 ) -> None:
+    # Ack the callback query IMMEDIATELY — Telegram invalidates it after ~15s,
+    # and finalize_pending below can take 60s+ due to LLM calls.
+    await cb.answer()
+
     data = await state.get_data()
     pending = PendingClarification.model_validate_json(data["pending"])
     cursor: int = data["cursor"]
@@ -112,17 +116,27 @@ async def on_pick(
                 format_clarify_question(nxt.raw_name, bool(nxt.suggestions)),
                 reply_markup=build_suggestion_keyboard(nxt.suggestions),
             )
-        await cb.answer()
         return
 
-    # All resolved → persist + analyze
+    # All resolved → persist + analyze. Show a progress stub first so the user
+    # sees feedback while the LLM runs (can take 60-90s).
     if cb.from_user is None:
-        await cb.answer("нет пользователя")
         return
+    try:
+        await cb.message.edit_text("Сохраняю и анализирую тренировку…")
+    except Exception:
+        pass
     uid = await repo.get_or_create_user(conn, telegram_id=cb.from_user.id)
     result = await ingest.finalize_pending(conn, user_id=uid, pending=pending)
     await state.clear()
-    reply = format_ingest_reply(
+    if result.parse_error:
+        try:
+            await cb.message.edit_text(result.parse_error)
+        except Exception:
+            await cb.message.answer(result.parse_error)
+        return
+    prefix = "Дописал к последней тренировке.\n\n" if result.was_append else ""
+    reply = prefix + format_ingest_reply(
         result.payload, result.analysis, result.rm_estimates,
         result.body_weight_kg, result.new_prs,
     )
@@ -130,7 +144,6 @@ async def on_pick(
         await cb.message.edit_text(reply)
     except Exception:
         await cb.message.answer(reply)
-    await cb.answer("готово")
 
 
 # Guard: ignore plain text while in clarify state so a typo doesn't get parsed

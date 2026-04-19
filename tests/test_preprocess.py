@@ -30,6 +30,19 @@ def test_parse_day_month_russian():
     assert d == datetime(2026, 3, 8, tzinfo=UTC)
 
 
+def test_parse_month_day_russian():
+    """`Март 8` (month-first) is also accepted as a date header."""
+    d = parse_workout_date("Март 8", NOW)
+    assert d == datetime(2026, 3, 8, tzinfo=UTC)
+    # with explicit year
+    d = parse_workout_date("апреля 15 2025", NOW)
+    assert d == datetime(2025, 4, 15, tzinfo=UTC)
+    # month-day header in extract_header_date strips cleanly
+    body, d = extract_header_date("Март 8\nжим 4x5x100", NOW)
+    assert body == "жим 4x5x100"
+    assert d == datetime(2026, 3, 8, tzinfo=UTC)
+
+
 def test_parse_day_month_all_months():
     # Each canonical month word resolves. Use an explicit year so the test
     # isn't sensitive to NOW-dependent rollback thresholds.

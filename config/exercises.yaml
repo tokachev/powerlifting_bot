@@ -133,6 +133,11 @@ hip_abduction:
   muscle_group: legs
   aliases: [отведения на ягодицы, отведение на ягодицы, отведения ног, отведение ног, hip abduction, разведения ног, разведения ног в тренажере, разведения ног в тренажёре]
 
+hip_adduction:
+  movement_pattern: accessory
+  muscle_group: legs
+  aliases: [сведения ног, сведение ног, сведения ног в тренажере, сведения ног в тренажёре, приводящие, машина для приводящих, hip adduction, adductor machine]
+
 bench_press:
   movement_pattern: push
   target_group: bench

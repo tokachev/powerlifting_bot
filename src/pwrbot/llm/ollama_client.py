@@ -153,7 +153,7 @@ class OllamaClient:
                 ],
                 "format": schema,
                 "stream": False,
-                "options": {"temperature": temperature},
+                "options": {"temperature": temperature, "num_predict": 1024},
             }
 
             log.debug(

@@ -34,12 +34,18 @@ log = get_logger(__name__)
 
 class PendingClarification(BaseModel):
     """Serializable pending parse: what the user sent, what we parsed, and which
-    exercises still need resolution. Stored in aiogram FSM state between messages."""
+    exercises still need resolution. Stored in aiogram FSM state between messages.
+
+    ``target_workout_id`` is set when the user invoked /add — finalize_pending
+    will then append the resolved payload to that workout instead of creating
+    a new one.
+    """
 
     source_text: str
     performed_at: int
     payload: WorkoutPayload
     unresolved: list[UnresolvedExercise]
+    target_workout_id: int | None = None
 
 
 @dataclass(slots=True)
@@ -52,6 +58,7 @@ class IngestResult:
     body_weight_kg: float | None = None
     parse_error: str | None = None
     pending: PendingClarification | None = None
+    was_append: bool = False
 
 
 class IngestService:
@@ -119,12 +126,88 @@ class IngestService:
         Assumes `pending.payload.exercises` has been patched with user choices
         (canonical_name set where the user picked one; still None where the
         user chose to skip)."""
+        if pending.target_workout_id is not None:
+            exists = await repo.workout_exists(
+                conn, workout_id=pending.target_workout_id, user_id=user_id,
+            )
+            if not exists:
+                return IngestResult(
+                    workout_id=0,
+                    payload=pending.payload,
+                    analysis=None,
+                    parse_error="Тренировка для дополнения уже удалена.",
+                )
+            return await self._append_and_analyze(
+                conn,
+                user_id=user_id,
+                workout_id=pending.target_workout_id,
+                performed_at=pending.performed_at,
+                addition_text=pending.source_text,
+                payload=pending.payload,
+            )
         return await self._persist_and_analyze(
             conn,
             user_id=user_id,
             source_text=pending.source_text,
             performed_at=pending.performed_at,
             payload=pending.payload,
+        )
+
+    async def append_to_last(
+        self,
+        conn: aiosqlite.Connection,
+        *,
+        user_id: int,
+        source_text: str,
+    ) -> IngestResult:
+        """Parse `source_text` and append the resulting exercises to the user's
+        most recent workout. Same parse/clarify pipeline as ``ingest``; the only
+        difference is persistence — no new workout row is created."""
+        last = await repo.get_last_workout(conn, user_id=user_id)
+        if last is None:
+            return IngestResult(
+                workout_id=0,
+                payload=None,
+                analysis=None,
+                parse_error="Нет тренировок для дополнения.",
+            )
+
+        try:
+            result = await self._pipeline.parse(source_text)
+        except ParseError as exc:
+            log.warning("append_parse_error", error=str(exc))
+            return IngestResult(
+                workout_id=0, payload=None, analysis=None, parse_error=str(exc),
+            )
+
+        payload = result.payload
+
+        if result.unresolved:
+            log.info(
+                "append_pending_clarification",
+                workout_id=last.id,
+                unresolved=len(result.unresolved),
+            )
+            return IngestResult(
+                workout_id=0,
+                payload=payload,
+                analysis=None,
+                pending=PendingClarification(
+                    source_text=source_text,
+                    performed_at=last.performed_at,
+                    payload=payload,
+                    unresolved=result.unresolved,
+                    target_workout_id=last.id,
+                ),
+            )
+
+        return await self._append_and_analyze(
+            conn,
+            user_id=user_id,
+            workout_id=last.id,
+            performed_at=last.performed_at,
+            addition_text=source_text,
+            payload=payload,
         )
 
     async def _persist_and_analyze(
@@ -172,6 +255,53 @@ class IngestService:
             rm_estimates=rm_estimates,
             new_prs=new_prs,
             body_weight_kg=bw_kg,
+        )
+
+    async def _append_and_analyze(
+        self,
+        conn: aiosqlite.Connection,
+        *,
+        user_id: int,
+        workout_id: int,
+        performed_at: int,
+        addition_text: str,
+        payload: WorkoutPayload,
+    ) -> IngestResult:
+        new_exercises = to_repo_exercises(payload, self._catalog)
+        await repo.append_to_workout(
+            conn,
+            workout_id=workout_id,
+            exercises=new_exercises,
+            addition_text=addition_text,
+        )
+        log.info(
+            "append_ok", workout_id=workout_id, exercises=len(new_exercises),
+        )
+
+        analysis = await self._analyzer.analyze(
+            conn, user_id=user_id, window_days=self._cfg.windows.short_days,
+        )
+
+        rm_estimates = await self._compute_rm(conn, user_id=user_id, payload=payload)
+
+        new_prs = await self._detect_prs(
+            conn, user_id=user_id, workout_id=workout_id,
+            performed_at=performed_at, exercises=new_exercises,
+        )
+
+        bw_kg: float | None = None
+        latest_bw = await repo.get_latest_body_weight(conn, user_id)
+        if latest_bw is not None:
+            bw_kg = latest_bw[0] / 1000.0
+
+        return IngestResult(
+            workout_id=workout_id,
+            payload=payload,
+            analysis=analysis,
+            rm_estimates=rm_estimates,
+            new_prs=new_prs,
+            body_weight_kg=bw_kg,
+            was_append=True,
         )
 
     async def _compute_rm(

@@ -280,6 +280,114 @@ async def test_format_g_header_date_override(conn, yaml_config) -> None:
     assert result.payload.performed_at <= now
 
 
+async def test_append_to_last_extends_existing_workout(conn, yaml_config) -> None:
+    """/add path: parse new text and append to the most recent workout instead
+    of inserting a new one. Source text must concat; positions must extend."""
+    catalog = load_catalog(REPO_ROOT / "config" / "exercises.yaml")
+    llm = _StubLLM()
+    _, _, ingest = _make_services(catalog, yaml_config, llm)
+
+    uid = await repo.get_or_create_user(conn, telegram_id=1)
+    first = await ingest.ingest(conn, user_id=uid, source_text="присед 4x5x100")
+    assert first.workout_id > 0
+
+    appended = await ingest.append_to_last(
+        conn, user_id=uid, source_text="жим 3x8x80",
+    )
+    assert appended.parse_error is None
+    assert appended.pending is None
+    assert appended.was_append is True
+    assert appended.workout_id == first.workout_id
+
+    # Still exactly one workout row, but with both exercises.
+    row = await (await conn.execute("SELECT COUNT(*) AS c FROM workouts")).fetchone()
+    assert row["c"] == 1
+    last = await repo.get_last_workout(conn, user_id=uid)
+    assert last is not None
+    assert [ex.canonical_name for ex in last.exercises] == ["back_squat", "bench_press"]
+    assert [ex.position for ex in last.exercises] == [1, 2]
+    assert last.source_text == "присед 4x5x100\nжим 3x8x80"
+
+
+async def test_append_to_last_with_no_workout(conn, yaml_config) -> None:
+    catalog = load_catalog(REPO_ROOT / "config" / "exercises.yaml")
+    llm = _StubLLM()
+    _, _, ingest = _make_services(catalog, yaml_config, llm)
+
+    uid = await repo.get_or_create_user(conn, telegram_id=1)
+    result = await ingest.append_to_last(
+        conn, user_id=uid, source_text="присед 4x5x100",
+    )
+    assert result.workout_id == 0
+    assert result.parse_error is not None
+    assert "Нет тренировок" in result.parse_error
+
+
+async def test_append_pending_then_finalize(conn, yaml_config) -> None:
+    """Append + clarify: unresolved exercise → pending with target_workout_id;
+    finalize_pending must append (not insert) and report was_append=True."""
+    catalog = load_catalog(REPO_ROOT / "config" / "exercises.yaml")
+    llm = _StubLLM(
+        canon_response_for={
+            "шраги": CanonicalizeResult(canonical_name=None, suggestions=["barbell_row"]),
+        }
+    )
+    _, _, ingest = _make_services(catalog, yaml_config, llm)
+
+    uid = await repo.get_or_create_user(conn, telegram_id=1)
+    first = await ingest.ingest(conn, user_id=uid, source_text="присед 4x5x100")
+
+    pend_result = await ingest.append_to_last(
+        conn, user_id=uid, source_text="шраги 4x10x60",
+    )
+    assert pend_result.pending is not None
+    assert pend_result.pending.target_workout_id == first.workout_id
+
+    pending = pend_result.pending
+    idx = pending.unresolved[0].index
+    exercises = list(pending.payload.exercises)
+    exercises[idx] = exercises[idx].model_copy(update={"canonical_name": "barbell_row"})
+    pending = pending.model_copy(
+        update={"payload": pending.payload.model_copy(update={"exercises": exercises})}
+    )
+
+    final = await ingest.finalize_pending(conn, user_id=uid, pending=pending)
+    assert final.was_append is True
+    assert final.workout_id == first.workout_id
+
+    row = await (await conn.execute("SELECT COUNT(*) AS c FROM workouts")).fetchone()
+    assert row["c"] == 1
+    last = await repo.get_last_workout(conn, user_id=uid)
+    assert last is not None
+    assert [ex.canonical_name for ex in last.exercises] == ["back_squat", "barbell_row"]
+
+
+async def test_append_pending_workout_deleted_before_finalize(conn, yaml_config) -> None:
+    """If the user deletes the target workout before answering clarify buttons,
+    finalize_pending must surface a clean parse_error instead of crashing on FK."""
+    catalog = load_catalog(REPO_ROOT / "config" / "exercises.yaml")
+    llm = _StubLLM(
+        canon_response_for={
+            "шраги": CanonicalizeResult(canonical_name=None, suggestions=["barbell_row"]),
+        }
+    )
+    _, _, ingest = _make_services(catalog, yaml_config, llm)
+
+    uid = await repo.get_or_create_user(conn, telegram_id=1)
+    await ingest.ingest(conn, user_id=uid, source_text="присед 4x5x100")
+    pend_result = await ingest.append_to_last(
+        conn, user_id=uid, source_text="шраги 4x10x60",
+    )
+    pending = pend_result.pending
+    assert pending is not None
+
+    await repo.delete_last_workout(conn, user_id=uid)
+    final = await ingest.finalize_pending(conn, user_id=uid, pending=pending)
+    assert final.workout_id == 0
+    assert final.parse_error is not None
+    assert "удалена" in final.parse_error
+
+
 async def test_pending_serializes_roundtrip(conn, yaml_config) -> None:
     """PendingClarification must JSON-round-trip for FSM storage."""
     catalog = load_catalog(REPO_ROOT / "config" / "exercises.yaml")

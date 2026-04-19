@@ -41,6 +41,10 @@ _RE_DAY_MONTH = re.compile(
     r"^\s*(?P<day>\d{1,2})\s+(?P<month>[а-я]+)(?:\s+(?P<year>\d{4}))?\s*$",
     re.IGNORECASE,
 )
+_RE_MONTH_DAY = re.compile(
+    r"^\s*(?P<month>[а-я]+)\s+(?P<day>\d{1,2})(?:\s+(?P<year>\d{4}))?\s*$",
+    re.IGNORECASE,
+)
 _RE_NUMERIC_DMY = re.compile(
     r"^\s*(?P<day>\d{1,2})\.(?P<month>\d{1,2})(?:\.(?P<year>\d{2,4}))?\s*$",
 )
@@ -113,7 +117,7 @@ def parse_workout_date(raw: str, now: datetime) -> datetime | None:
                     year = 2000 + y if y < 100 else y
                 parsed = _to_utc_midnight(year, month, day)
         if parsed is None:
-            m = _RE_DAY_MONTH.match(text)
+            m = _RE_DAY_MONTH.match(text) or _RE_MONTH_DAY.match(text)
             if m:
                 day = int(m.group("day"))
                 mon_word = m.group("month")

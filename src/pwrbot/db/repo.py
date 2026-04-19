@@ -188,6 +188,88 @@ async def get_workouts_in_window(
     return list(workouts.values())
 
 
+async def append_to_workout(
+    conn: aiosqlite.Connection,
+    *,
+    workout_id: int,
+    exercises: list[ExerciseRow],
+    addition_text: str | None = None,
+) -> list[int]:
+    """Append exercises to an existing workout.
+
+    Position numbers in the input ``exercises`` are ignored — the function
+    auto-offsets new entries to start right after the current MAX(position),
+    so concurrent inserts can't violate the UNIQUE(workout_id, position) index.
+
+    If ``addition_text`` is given, it is appended to the workout's source_text
+    on a new line so the audit trail keeps the user's exact wording.
+
+    Returns the new exercise_entry ids in insertion order.
+    """
+    row = await (
+        await conn.execute(
+            "SELECT COALESCE(MAX(position), 0) AS m "
+            "FROM exercise_entries WHERE workout_id = ?",
+            (workout_id,),
+        )
+    ).fetchone()
+    offset = int(row["m"]) if row is not None else 0
+
+    new_ids: list[int] = []
+    for i, ex in enumerate(exercises, start=1):
+        async with conn.execute(
+            "INSERT INTO exercise_entries "
+            "(workout_id, position, raw_name, canonical_name, movement_pattern) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (
+                workout_id,
+                offset + i,
+                ex.raw_name,
+                ex.canonical_name,
+                ex.movement_pattern,
+            ),
+        ) as cur:
+            entry_id = int(cur.lastrowid)
+        new_ids.append(entry_id)
+        for s in ex.sets:
+            await conn.execute(
+                "INSERT INTO set_entries "
+                "(exercise_entry_id, set_index, reps, weight_g, rpe, is_warmup, "
+                "bar_velocity_ms) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    entry_id,
+                    s.set_index,
+                    s.reps,
+                    s.weight_g,
+                    s.rpe,
+                    1 if s.is_warmup else 0,
+                    s.bar_velocity_ms,
+                ),
+            )
+
+    if addition_text:
+        await conn.execute(
+            "UPDATE workouts SET source_text = source_text || ? WHERE id = ?",
+            ("\n" + addition_text, workout_id),
+        )
+
+    await conn.commit()
+    return new_ids
+
+
+async def workout_exists(
+    conn: aiosqlite.Connection, *, workout_id: int, user_id: int
+) -> bool:
+    row = await (
+        await conn.execute(
+            "SELECT 1 FROM workouts WHERE id = ? AND user_id = ?",
+            (workout_id, user_id),
+        )
+    ).fetchone()
+    return row is not None
+
+
 async def get_last_workout(
     conn: aiosqlite.Connection, user_id: int
 ) -> WorkoutRow | None:
