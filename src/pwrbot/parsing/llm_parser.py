@@ -8,10 +8,41 @@ from datetime import UTC, datetime
 
 from pydantic import BaseModel, Field
 
-from pwrbot.domain.catalog import Catalog
+from pwrbot.domain.catalog import Catalog, normalize
 from pwrbot.domain.models import WorkoutPayload
 from pwrbot.llm.ollama_client import OllamaClient
 from pwrbot.llm.prompt_loader import PromptLoader
+
+# RU-root → muscle_group. Order matters: first substring match wins, so more
+# specific roots (трицепс) come before shorter ones (трис) would — here all
+# roots are distinct enough that order is stable.
+_MUSCLE_KEYWORDS: tuple[tuple[str, str], ...] = (
+    ("трицепс", "arms"),
+    ("трис", "arms"),
+    ("бицепс", "arms"),
+    ("широч", "back"),
+    ("спин", "back"),
+    ("груд", "chest"),
+    ("дельт", "shoulders"),
+    ("плеч", "shoulders"),
+    ("квадр", "legs"),
+    ("ягодиц", "legs"),
+    ("голен", "legs"),
+    ("бедр", "legs"),
+    ("пресс", "core"),
+    ("кор", "core"),
+)
+
+
+def _detect_muscle_group(raw_name: str) -> str | None:
+    """Return the muscle_group hinted by RU roots in raw_name, or None."""
+    norm = normalize(raw_name)
+    if not norm:
+        return None
+    for root, mg in _MUSCLE_KEYWORDS:
+        if root in norm:
+            return mg
+    return None
 
 
 class CanonicalizeResult(BaseModel):
@@ -63,7 +94,11 @@ class LLMParser:
         canonical name OR a list of up to 3 suggested catalog keys the user
         should pick from. Hallucinated keys (not in the catalog) are filtered out.
         """
-        keys = "\n".join(f"- {k}" for k in self._catalog.canonical_names)
+        key_lines: list[str] = []
+        for e in self._catalog.entries:
+            mg = e.muscle_group or "?"
+            key_lines.append(f"- {e.canonical_name} (muscle: {mg}, pattern: {e.movement_pattern})")
+        keys = "\n".join(key_lines)
         tmpl = self._prompts.render(
             "canonicalize_exercise", raw_name=raw_name, catalog_keys=keys
         )
@@ -86,6 +121,29 @@ class LLMParser:
                 suggestions.append(s)
             if len(suggestions) >= 3:
                 break
+
+        # Safety net: if the raw input has a clear RU muscle-group cue, drop
+        # anything from a different muscle_group (LLM sometimes picks by
+        # equipment token "канат" → cable_row even though cable_row is back,
+        # not a triceps move).
+        # - canonical: always demote on mismatch — a confident wrong pick
+        #   would be written straight to the payload without asking.
+        # - suggestions: filter to matching muscle_group; if that wipes all
+        #   of them, keep the unfiltered list (bad suggestions beat none —
+        #   the user still gets a chance to skip).
+        detected = _detect_muscle_group(raw_name)
+        if detected is not None:
+            def _matches(key: str) -> bool:
+                entry = self._catalog.by_canonical(key)
+                return entry is not None and entry.muscle_group == detected
+
+            if canonical is not None and not _matches(canonical):
+                canonical = None
+            filtered_suggestions = [s for s in suggestions if _matches(s)]
+            if filtered_suggestions:
+                suggestions = filtered_suggestions
+            # else: fall through with unfiltered suggestions
+
         return CanonicalizeResult(canonical_name=canonical, suggestions=suggestions)
 
     async def explain(

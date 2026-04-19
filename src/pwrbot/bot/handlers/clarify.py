@@ -14,7 +14,7 @@ import aiosqlite
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, InlineKeyboardMarkup
+from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from pwrbot.bot.formatting import format_ingest_reply
@@ -33,6 +33,7 @@ class ClarifyStates(StatesGroup):
 
 CB_PREFIX = "cl:"
 SKIP_TOKEN = "__skip__"
+CANCEL_TOKEN = "__cancel__"
 
 
 def build_suggestion_keyboard(suggestions: list[str]) -> InlineKeyboardMarkup:
@@ -40,6 +41,7 @@ def build_suggestion_keyboard(suggestions: list[str]) -> InlineKeyboardMarkup:
     for key in suggestions[:3]:
         b.button(text=key, callback_data=f"{CB_PREFIX}{key}")
     b.button(text="пропустить", callback_data=f"{CB_PREFIX}{SKIP_TOKEN}")
+    b.button(text="❌ отменить черновик", callback_data=f"{CB_PREFIX}{CANCEL_TOKEN}")
     b.adjust(1)
     return b.as_markup()
 
@@ -85,11 +87,21 @@ async def on_pick(
     # and finalize_pending below can take 60s+ due to LLM calls.
     await cb.answer()
 
+    choice = (cb.data or "")[len(CB_PREFIX) :]
+
+    # Explicit cancel — wipe state, acknowledge, done.
+    if choice == CANCEL_TOKEN:
+        await state.clear()
+        try:
+            await cb.message.edit_text("Черновик отменён.")
+        except Exception:
+            await cb.message.answer("Черновик отменён.")
+        return
+
     data = await state.get_data()
     pending = PendingClarification.model_validate_json(data["pending"])
     cursor: int = data["cursor"]
 
-    choice = (cb.data or "")[len(CB_PREFIX) :]
     unres = pending.unresolved[cursor]
 
     # Apply the choice
@@ -146,14 +158,33 @@ async def on_pick(
         await cb.message.answer(reply)
 
 
-# Guard: ignore plain text while in clarify state so a typo doesn't get parsed
-# as a new workout mid-dialog.
-@router.message(ClarifyStates.resolving)
-async def reject_text_in_clarify(message) -> None:
-    await message.answer(
-        "Ещё не ответил про предыдущее упражнение — нажми одну из кнопок выше "
-        "или «пропустить»."
-    )
+# If the user sends a new workout text mid-dialog, treat it as an explicit
+# replacement: drop the pending draft and re-parse the new message from scratch.
+# Slash-commands (/log, /add, /cancel…) fall through to their own routers via
+# the ~F.text.startswith("/") filter.
+@router.message(ClarifyStates.resolving, F.text & ~F.text.startswith("/"))
+async def reparse_text_in_clarify(
+    message: Message,
+    state: FSMContext,
+    conn: aiosqlite.Connection,
+    ingest: IngestService,
+) -> None:
+    data = await state.get_data()
+    pending_raw = data.get("pending")
+    n_unresolved = 0
+    if pending_raw:
+        try:
+            n_unresolved = len(
+                PendingClarification.model_validate_json(pending_raw).unresolved
+            )
+        except Exception:
+            n_unresolved = 0
+    log.info("clarify_draft_dropped", unresolved_remaining=n_unresolved)
+    await state.clear()
+    await message.answer("Сбросил предыдущий черновик, парсю новое сообщение.")
+    # Lazy import to avoid a circular import (log → clarify → log).
+    from pwrbot.bot.handlers.log import ingest_text
+    await ingest_text(message, message.text or "", conn, ingest, state)
 
 
 def unwrap_exercise(ex: ExercisePayload) -> ExercisePayload:

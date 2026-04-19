@@ -109,6 +109,25 @@ def test_tricep_out_of_head_alias() -> None:
     assert cat.resolve("трицепс из-за головы на блоке").canonical_name == "tricep_extension"
 
 
+def test_cable_tricep_aliases() -> None:
+    cat = load_catalog(CATALOG_PATH)
+    for raw in [
+        "Разгибания с канатом из-за головы",
+        "разгибания с канатом из за головы",
+        "трицепс с канатом из-за головы",
+        "трицепс с канатом",
+        "трицепс на канате",
+        "француз на блоке",
+        "разгибания на блоке из-за головы",
+        "разгибания с канатом на трицепс",
+    ]:
+        e = cat.resolve(raw)
+        assert e is not None, raw
+        assert e.canonical_name == "tricep_extension", raw
+    # the bare pushdown alias still routes to tricep_pushdown
+    assert cat.resolve("разгибания на блоке").canonical_name == "tricep_pushdown"
+
+
 # --- Dashboard taxonomy (target_group / muscle_group) ---
 
 

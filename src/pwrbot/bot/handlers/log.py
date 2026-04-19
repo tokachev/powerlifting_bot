@@ -21,7 +21,7 @@ from pwrbot.services.ingest import IngestService
 router = Router()
 
 
-async def _ingest_text(
+async def ingest_text(
     message: Message,
     text: str,
     conn: aiosqlite.Connection,
@@ -66,7 +66,7 @@ async def cmd_log(
     state: FSMContext,
 ) -> None:
     text = (message.text or message.caption or "").partition(" ")[2]
-    await _ingest_text(message, text, conn, ingest, state)
+    await ingest_text(message, text, conn, ingest, state)
 
 
 @router.message(F.text & ~F.text.startswith("/"))
@@ -76,4 +76,4 @@ async def plain_text_log(
     ingest: IngestService,
     state: FSMContext,
 ) -> None:
-    await _ingest_text(message, message.text or "", conn, ingest, state)
+    await ingest_text(message, message.text or "", conn, ingest, state)
