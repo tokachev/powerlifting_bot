@@ -17,7 +17,27 @@ from pwrbot.video.frame_extractor import FrameExtractionError
 
 log = get_logger(__name__)
 
+_TG_MSG_LIMIT = 4096
+
 router = Router()
+
+
+def _split_text(text: str, limit: int = _TG_MSG_LIMIT) -> list[str]:
+    if len(text) <= limit:
+        return [text]
+    parts: list[str] = []
+    while text:
+        if len(text) <= limit:
+            parts.append(text)
+            break
+        cut = text.rfind("\n", 0, limit)
+        if cut <= 0:
+            cut = text.rfind(" ", 0, limit)
+        if cut <= 0:
+            cut = limit
+        parts.append(text[:cut])
+        text = text[cut:].lstrip()
+    return parts
 
 
 @router.message(F.video | F.video_note)
@@ -55,14 +75,14 @@ async def handle_video(
             telegram_file_id=file_obj.file_id,
         )
 
-        # Send problem frame screenshots first (if any)
-        for i, frame_b64 in enumerate(result.problem_frames_b64, start=1):
-            photo_bytes = base64.b64decode(frame_b64)
-            photo = BufferedInputFile(photo_bytes, filename=f"frame_{i}.jpg")
-            caption = f"Стоп-кадр {i}: ошибка техники" if len(result.problem_frames_b64) > 1 else "Стоп-кадр: ошибка техники"
-            await message.answer_photo(photo, caption=caption)
+        # Send frame collage (all frames numbered, problem ones annotated with pose)
+        if result.collage_b64:
+            photo_bytes = base64.b64decode(result.collage_b64)
+            photo = BufferedInputFile(photo_bytes, filename="frames.jpg")
+            await message.answer_photo(photo, caption=f"Кадры 1-{result.frame_count}")
 
-        await message.answer(result.analysis_text)
+        for chunk in _split_text(result.analysis_text):
+            await message.answer(chunk)
 
     except VideoTooLongError as exc:
         await message.answer(str(exc))

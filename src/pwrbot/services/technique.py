@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from pwrbot.llm.ollama_client import OllamaClient
 from pwrbot.llm.prompt_loader import PromptLoader
 from pwrbot.logging_setup import get_logger
 from pwrbot.video.frame_extractor import ExtractedFrames, extract_key_frames
+from pwrbot.video.pose_annotator import build_collage
 
 log = get_logger(__name__)
 
@@ -31,7 +33,7 @@ class TechniqueResult:
     duration_s: float
     model_used: str
     db_id: int
-    problem_frames_b64: list[str] = field(default_factory=list)
+    collage_b64: str = ""
 
 
 class TechniqueAnalysisService:
@@ -63,7 +65,8 @@ class TechniqueAnalysisService:
         exercise_hint: str | None = None,
         telegram_file_id: str | None = None,
     ) -> TechniqueResult:
-        extracted = extract_key_frames(
+        extracted = await asyncio.to_thread(
+            extract_key_frames,
             video_path,
             max_frames=self._max_frames,
             resize_width=self._resize_width,
@@ -78,12 +81,12 @@ class TechniqueAnalysisService:
         llm_resp = await self._call_vision(extracted, exercise_hint)
         model_used = self._vision_model or self._ollama._model
 
-        # Extract problem frames (LLM returns 1-based indices)
-        problem_frames_b64: list[str] = []
-        for idx_1based in llm_resp.problem_frame_indices:
-            idx = idx_1based - 1  # convert to 0-based
-            if 0 <= idx < len(extracted.frames_b64):
-                problem_frames_b64.append(extracted.frames_b64[idx])
+        # Build collage: all frames numbered, problem frames get pose annotation
+        collage_b64 = await asyncio.to_thread(
+            build_collage,
+            extracted.frames_b64,
+            llm_resp.problem_frame_indices,
+        )
 
         db_id = await repo.insert_video_analysis(
             conn,
@@ -100,8 +103,9 @@ class TechniqueAnalysisService:
             "technique_analysis_done",
             db_id=db_id,
             frames=len(extracted.frames_b64),
-            problem_frames=len(problem_frames_b64),
+            problem_indices=llm_resp.problem_frame_indices,
             duration_s=extracted.duration_s,
+            motion_window=extracted.motion_window,
         )
 
         return TechniqueResult(
@@ -110,7 +114,7 @@ class TechniqueAnalysisService:
             duration_s=extracted.duration_s,
             model_used=model_used,
             db_id=db_id,
-            problem_frames_b64=problem_frames_b64,
+            collage_b64=collage_b64,
         )
 
     async def _call_vision(

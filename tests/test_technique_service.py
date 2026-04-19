@@ -20,6 +20,9 @@ from pwrbot.services.technique import (
 from pwrbot.video.frame_extractor import ExtractedFrames
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# Patch annotate_frames globally so tests don't need mediapipe
+_COLLAGE_PATCH = "pwrbot.services.technique.build_collage"
 ANALYSIS_TEXT = "Техника хорошая. Глубина достаточная, спина нейтральная."
 
 
@@ -64,9 +67,12 @@ async def test_analyze_video_happy_path(conn) -> None:
     async with httpx.AsyncClient(transport=transport) as http:
         svc = _make_service(http)
 
-        with patch(
-            "pwrbot.services.technique.extract_key_frames",
-            return_value=_fake_extracted(),
+        with (
+            patch(
+                "pwrbot.services.technique.extract_key_frames",
+                return_value=_fake_extracted(),
+            ),
+            patch(_COLLAGE_PATCH, return_value="COLLAGE_B64"),
         ):
             result = await svc.analyze_video(
                 conn,
@@ -82,8 +88,7 @@ async def test_analyze_video_happy_path(conn) -> None:
     assert result.duration_s == 5.0
     assert result.model_used == "gemma4:e4b"
     assert result.db_id > 0
-    # Frame index 2 (1-based) → frames_b64[1] = "BBBB"
-    assert result.problem_frames_b64 == ["BBBB"]
+    assert result.collage_b64 == "COLLAGE_B64"
 
     rows = await repo.get_video_analyses(conn, user_id=uid)
     assert len(rows) == 1
@@ -102,15 +107,18 @@ async def test_analyze_video_no_problems(conn) -> None:
     async with httpx.AsyncClient(transport=transport) as http:
         svc = _make_service(http)
 
-        with patch(
-            "pwrbot.services.technique.extract_key_frames",
-            return_value=_fake_extracted(),
+        with (
+            patch(
+                "pwrbot.services.technique.extract_key_frames",
+                return_value=_fake_extracted(),
+            ),
+            patch(_COLLAGE_PATCH, return_value="COLLAGE_B64"),
         ):
             result = await svc.analyze_video(
                 conn, user_id=uid, video_path=Path("/fake/video.mp4")
             )
 
-    assert result.problem_frames_b64 == []
+    assert result.collage_b64 == "COLLAGE_B64"
 
 
 async def test_analyze_video_multiple_problem_frames(conn) -> None:
@@ -124,16 +132,18 @@ async def test_analyze_video_multiple_problem_frames(conn) -> None:
     async with httpx.AsyncClient(transport=transport) as http:
         svc = _make_service(http)
 
-        with patch(
-            "pwrbot.services.technique.extract_key_frames",
-            return_value=_fake_extracted(),
+        with (
+            patch(
+                "pwrbot.services.technique.extract_key_frames",
+                return_value=_fake_extracted(),
+            ),
+            patch(_COLLAGE_PATCH, return_value="COLLAGE_B64"),
         ):
             result = await svc.analyze_video(
                 conn, user_id=uid, video_path=Path("/fake/video.mp4")
             )
 
-    # 1-based [1, 3] → 0-based [0, 2] → ["AAAA", "CCCC"]
-    assert result.problem_frames_b64 == ["AAAA", "CCCC"]
+    assert result.collage_b64 == "COLLAGE_B64"
 
 
 async def test_out_of_range_indices_ignored(conn) -> None:
@@ -147,16 +157,18 @@ async def test_out_of_range_indices_ignored(conn) -> None:
     async with httpx.AsyncClient(transport=transport) as http:
         svc = _make_service(http)
 
-        with patch(
-            "pwrbot.services.technique.extract_key_frames",
-            return_value=_fake_extracted(),
+        with (
+            patch(
+                "pwrbot.services.technique.extract_key_frames",
+                return_value=_fake_extracted(),
+            ),
+            patch(_COLLAGE_PATCH, return_value="COLLAGE_B64"),
         ):
             result = await svc.analyze_video(
                 conn, user_id=uid, video_path=Path("/fake/video.mp4")
             )
 
-    # 0 (1-based→-1, out of range), 2 (1-based→1, "BBBB"), 99 (out of range)
-    assert result.problem_frames_b64 == ["BBBB"]
+    assert result.collage_b64 == "COLLAGE_B64"
 
 
 async def test_analyze_video_no_hint(conn) -> None:
@@ -175,9 +187,12 @@ async def test_analyze_video_no_hint(conn) -> None:
     async with httpx.AsyncClient(transport=transport) as http:
         svc = _make_service(http)
 
-        with patch(
-            "pwrbot.services.technique.extract_key_frames",
-            return_value=_fake_extracted(),
+        with (
+            patch(
+                "pwrbot.services.technique.extract_key_frames",
+                return_value=_fake_extracted(),
+            ),
+            patch(_COLLAGE_PATCH, return_value="COLLAGE_B64"),
         ):
             result = await svc.analyze_video(
                 conn,
@@ -186,8 +201,8 @@ async def test_analyze_video_no_hint(conn) -> None:
             )
 
     assert result.analysis_text == ANALYSIS_TEXT
-    user_msg = captured[0]["messages"][1]["content"]
-    assert "не указано" in user_msg.lower()
+    system_msg = captured[0]["messages"][0]["content"]
+    assert "не указано" in system_msg.lower()
 
 
 async def test_video_too_long_raises(conn) -> None:
@@ -238,9 +253,12 @@ async def test_vision_model_override(conn) -> None:
             ollama=client, prompts=prompts, vision_model="llava:13b"
         )
 
-        with patch(
-            "pwrbot.services.technique.extract_key_frames",
-            return_value=_fake_extracted(),
+        with (
+            patch(
+                "pwrbot.services.technique.extract_key_frames",
+                return_value=_fake_extracted(),
+            ),
+            patch(_COLLAGE_PATCH, return_value="COLLAGE_B64"),
         ):
             result = await svc.analyze_video(
                 conn,

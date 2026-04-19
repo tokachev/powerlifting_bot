@@ -3,7 +3,13 @@ FROM python:3.11-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    MPLCONFIGDIR=/tmp/matplotlib
+
+# System libs for OpenCV / MediaPipe (mediapipe pulls opencv-contrib which needs libGL)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
 
 # Non-root user (fixed UID for predictable bind-mount ownership)
 RUN useradd --create-home --uid 1000 --shell /bin/bash pwrbot

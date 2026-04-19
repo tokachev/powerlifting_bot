@@ -47,16 +47,14 @@ def _make_message(*, has_video: bool = True, caption: str | None = None) -> Magi
     return msg
 
 
-def _make_technique_result(
-    *, problem_frames: list[str] | None = None
-) -> TechniqueResult:
+def _make_technique_result(*, collage: str = "") -> TechniqueResult:
     return TechniqueResult(
         analysis_text="Техника хорошая.",
         frame_count=4,
         duration_s=5.0,
         model_used="gemma4:e4b",
         db_id=1,
-        problem_frames_b64=problem_frames or [],
+        collage_b64=collage,
     )
 
 
@@ -82,10 +80,10 @@ async def test_handle_video_happy_path_no_problems(conn) -> None:
     assert call_kwargs["exercise_hint"] == "присед 140"
 
 
-async def test_handle_video_with_problem_frames(conn) -> None:
+async def test_handle_video_with_collage(conn) -> None:
     svc = MagicMock()
     svc.analyze_video = AsyncMock(
-        return_value=_make_technique_result(problem_frames=[_TINY_JPEG_B64])
+        return_value=_make_technique_result(collage=_TINY_JPEG_B64)
     )
     msg = _make_message()
 
@@ -93,31 +91,11 @@ async def test_handle_video_with_problem_frames(conn) -> None:
         mock_repo.get_or_create_user = AsyncMock(return_value=1)
         await handle_video(msg, conn, svc)
 
-    # 1 photo sent, then text
+    # 1 collage photo sent, then text
     assert msg.answer_photo.call_count == 1
     photo_call = msg.answer_photo.call_args
-    assert photo_call[1]["caption"] == "Стоп-кадр: ошибка техники"
+    assert "1-4" in photo_call[1]["caption"]
     assert msg.answer.call_count == 2  # ack + analysis text
-
-
-async def test_handle_video_with_multiple_problem_frames(conn) -> None:
-    svc = MagicMock()
-    svc.analyze_video = AsyncMock(
-        return_value=_make_technique_result(
-            problem_frames=[_TINY_JPEG_B64, _TINY_JPEG_B64]
-        )
-    )
-    msg = _make_message()
-
-    with patch("pwrbot.bot.handlers.video.repo") as mock_repo:
-        mock_repo.get_or_create_user = AsyncMock(return_value=1)
-        await handle_video(msg, conn, svc)
-
-    assert msg.answer_photo.call_count == 2
-    cap1 = msg.answer_photo.call_args_list[0][1]["caption"]
-    cap2 = msg.answer_photo.call_args_list[1][1]["caption"]
-    assert "1" in cap1
-    assert "2" in cap2
 
 
 async def test_handle_video_no_caption(conn) -> None:
