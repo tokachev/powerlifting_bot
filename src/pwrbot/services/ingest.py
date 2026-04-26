@@ -87,7 +87,8 @@ class IngestService:
         except ParseError as exc:
             log.warning("ingest_parse_error", error=str(exc))
             return IngestResult(
-                workout_id=0, payload=None, analysis=None, parse_error=str(exc)
+                workout_id=0, payload=None, analysis=None,
+                parse_error=exc.user_message or "Не смог распарсить тренировку.",
             )
 
         payload = result.payload
@@ -177,7 +178,8 @@ class IngestService:
         except ParseError as exc:
             log.warning("append_parse_error", error=str(exc))
             return IngestResult(
-                workout_id=0, payload=None, analysis=None, parse_error=str(exc),
+                workout_id=0, payload=None, analysis=None,
+                parse_error=exc.user_message or "Не смог распарсить тренировку.",
             )
 
         payload = result.payload

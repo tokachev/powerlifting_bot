@@ -6,9 +6,10 @@ that could not be canonicalized and need user clarification.
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from pwrbot.config import YamlConfig
 from pwrbot.domain.catalog import Catalog
@@ -21,7 +22,15 @@ log = get_logger(__name__)
 
 
 class ParseError(Exception):
-    """Couldn't parse the message after both regex and LLM attempts."""
+    """Couldn't parse the message after both regex and LLM attempts.
+
+    ``user_message`` is a short Russian explanation safe to show in Telegram —
+    callers should prefer it over ``str(exc)`` for the user-facing reply.
+    """
+
+    def __init__(self, message: str, *, user_message: str | None = None) -> None:
+        super().__init__(message)
+        self.user_message = user_message
 
 
 class UnresolvedExercise(BaseModel):
@@ -66,6 +75,72 @@ def _regex_to_payload(
     )
 
 
+_SUSPECT_NXR = re.compile(r"\d+\s*[xхХ×*]\s*(\d+)", re.IGNORECASE)
+
+
+def _scan_suspect_line(body: str) -> tuple[str, int] | None:
+    """Heuristic: find a line where reps after `WxR` looks bogus (>100).
+
+    Used when regex rejected a setgroup via the sanity-check (so no
+    ValidationError is raised), but the user-facing message still benefits
+    from pointing at the offending line.
+    """
+    for ln in body.splitlines():
+        for m in _SUSPECT_NXR.finditer(ln):
+            try:
+                v = int(m.group(1))
+            except ValueError:
+                continue
+            if v > 100:
+                return ln.strip(), v
+    return None
+
+
+def _format_user_hint(
+    body: str, regex_err: ValidationError | None,
+) -> str | None:
+    """Build a Russian Telegram-friendly hint pointing at the suspect line.
+
+    Returns None if no specific guidance can be produced — the caller will fall
+    back to the generic error message.
+    """
+    suspect_line: str | None = None
+    label: str | None = None
+    bad_value: int | float | None = None
+
+    if regex_err is not None:
+        for err in regex_err.errors():
+            loc = err.get("loc") or ()
+            f = loc[-1] if loc else None
+            if f not in ("reps", "weight_kg", "rpe"):
+                continue
+            val = err.get("input")
+            if not isinstance(val, (int, float)):
+                continue
+            token = str(val if isinstance(val, int) else int(val) if val == int(val) else val)
+            for ln in body.splitlines():
+                if token and token in ln:
+                    suspect_line = ln.strip()
+                    label = {"reps": "повторов", "weight_kg": "вес (кг)", "rpe": "RPE"}[f]
+                    bad_value = val
+                    break
+            if suspect_line is not None:
+                break
+
+    if suspect_line is None:
+        scan = _scan_suspect_line(body)
+        if scan is not None:
+            suspect_line, bad_value = scan
+            label = "повторов"
+
+    if suspect_line is None or label is None or bad_value is None:
+        return None
+    return (
+        f"Не понял строку: `{suspect_line}` — {label} = {bad_value} "
+        "выглядит как опечатка. Проверь формат `WxRxN` (например `60x20x4`)."
+    )
+
+
 class ParsingPipeline:
     def __init__(
         self,
@@ -91,17 +166,33 @@ class ParsingPipeline:
 
         # 1) regex first
         parsed = regex_parser.parse(body)
+        payload: WorkoutPayload | None = None
+        regex_validation_err: ValidationError | None = None
         if parsed is not None:
-            log.info("regex_parse_ok", exercises=len(parsed))
-            payload = _regex_to_payload(parsed)
-        else:
+            try:
+                payload = _regex_to_payload(parsed)
+                log.info("regex_parse_ok", exercises=len(parsed))
+            except ValidationError as exc:
+                # regex matched but produced out-of-range values — fall through
+                # to LLM and remember the error for a user-friendly hint if LLM
+                # also fails.
+                log.warning("regex_parse_invalid", error=str(exc))
+                regex_validation_err = exc
+
+        if payload is None:
             if self._llm is None:
-                raise ParseError("regex parser failed and no LLM parser configured")
+                raise ParseError(
+                    "regex parser failed and no LLM parser configured",
+                    user_message=_format_user_hint(body, regex_validation_err),
+                )
             log.info("regex_parse_miss_llm_fallback")
             try:
                 payload = await self._llm.parse_text(body)
             except Exception as exc:  # LLMParseError or network
-                raise ParseError(f"LLM parse failed: {exc}") from exc
+                raise ParseError(
+                    f"LLM parse failed: {exc}",
+                    user_message=_format_user_hint(body, regex_validation_err),
+                ) from exc
 
         # 2) catalog resolution + warmup rule
         payload = normalize.normalize_workout(payload, self._catalog, self._cfg)

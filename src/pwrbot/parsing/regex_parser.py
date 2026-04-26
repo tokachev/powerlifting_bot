@@ -282,6 +282,14 @@ def _skip_seps(text: str, pos: int) -> int:
     return pos
 
 
+def _sets_in_range(sets: list[ParsedSet]) -> bool:
+    # Mirrors SetPayload bounds (reps<=100, weight<=500). A pattern that
+    # produces out-of-range values is almost always a typo (e.g. `60x204` —
+    # really `60x20x4` mashed together) — reject the match so the next pattern
+    # or, ultimately, the LLM fallback gets a chance.
+    return all(1 <= s.reps <= 100 and 0 <= s.weight_kg <= 500 for s in sets)
+
+
 def _match_setgroup_at_start(
     text: str, pos: int, rpe: float | None, is_warmup: bool
 ) -> tuple[list[ParsedSet], int] | None:
@@ -297,6 +305,8 @@ def _match_setgroup_at_start(
             continue
         sets = builder(m, rpe, is_warmup)
         if not sets:
+            continue
+        if not _sets_in_range(sets):
             continue
         return sets, m.end()
     return None

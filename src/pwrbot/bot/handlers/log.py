@@ -41,8 +41,8 @@ async def ingest_text(
 
     if result.parse_error:
         await message.answer(
-            "Не смог распарсить тренировку. Попробуй формат "
-            "`упражнение NxRxW`, например `присед 4x5x100`."
+            f"{result.parse_error}\n\n"
+            "Формат: `упражнение NxRxW`, например `присед 4x5x100`."
         )
         return
 
