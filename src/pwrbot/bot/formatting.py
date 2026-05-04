@@ -8,6 +8,7 @@ from pwrbot.db.repo import WorkoutRow
 from pwrbot.domain.models import WorkoutPayload
 from pwrbot.metrics.pr import DetectedPR
 from pwrbot.rules.one_rm import OneRMEstimate
+from pwrbot.rules.recommendation import NextWorkoutRecommendation
 from pwrbot.services.analyze import AnalyzeResult
 
 _BIG3_DISPLAY: dict[str, str] = {
@@ -126,6 +127,16 @@ def format_analysis(result: AnalyzeResult) -> str:
     return "\n".join(lines)
 
 
+def format_next_workout(recommendation: NextWorkoutRecommendation) -> str:
+    lines = [recommendation.title]
+    for reason in recommendation.rationale:
+        lines.append(f"  • {reason}")
+    if recommendation.caution_patterns:
+        caution = ", ".join(recommendation.caution_patterns)
+        lines.append(f"  осторожно с: {caution}")
+    return "\n".join(lines)
+
+
 def format_rm_estimates(
     estimates: list[OneRMEstimate],
     body_weight_kg: float | None = None,
@@ -184,4 +195,7 @@ def format_ingest_reply(
     if analysis is not None:
         parts.append("")
         parts.append(format_analysis(analysis))
+        if analysis.next_workout is not None:
+            parts.append("")
+            parts.append(format_next_workout(analysis.next_workout))
     return "\n".join(parts)

@@ -15,6 +15,7 @@ from pwrbot.db.connection import bootstrap
 from pwrbot.domain.catalog import load_catalog
 from pwrbot.domain.models import ExercisePayload, SetPayload, WorkoutPayload
 from pwrbot.parsing.pipeline import ParsingPipeline
+from pwrbot.rules.recommendation import NextWorkoutRecommendation
 from pwrbot.services.analyze import AnalyzeResult, AnalyzeService
 from pwrbot.services.ingest import IngestService
 from pwrbot.services.max_query import MaxQueryService
@@ -103,3 +104,40 @@ def test_format_analysis_no_flags() -> None:
     assert "Флагов нет" in out
     assert "1234" in out
     assert "всё норм" in out
+
+
+def test_format_ingest_reply_includes_next_workout() -> None:
+    payload = WorkoutPayload(
+        exercises=[
+            ExercisePayload(
+                raw_name="жим",
+                canonical_name="bench_press",
+                sets=[SetPayload(reps=5, weight_kg=100.0, rpe=8.0)],
+            )
+        ]
+    )
+    analysis = AnalyzeResult(
+        window_days=7,
+        metrics={
+            "window": {
+                "total_tonnage_kg": 500.0,
+                "total_hard_sets": 1,
+                "hard_sets_by_pattern": {"push": 1},
+            }
+        },
+        flags=[],
+        explanation=None,
+        snapshot_id=1,
+        next_workout=NextWorkoutRecommendation(
+            focus_pattern="pull",
+            title="Следующая тренировка: pull",
+            rationale=["сбалансировать избыток push относительно pull"],
+            caution_patterns=["push"],
+        ),
+    )
+
+    out = format_ingest_reply(payload, analysis)
+
+    assert "Следующая тренировка: pull" in out
+    assert "сбалансировать избыток push относительно pull" in out
+    assert "осторожно с: push" in out

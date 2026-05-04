@@ -13,6 +13,7 @@ from pwrbot.db import repo
 from pwrbot.logging_setup import get_logger
 from pwrbot.parsing.llm_parser import LLMParser
 from pwrbot.rules import engine
+from pwrbot.rules.recommendation import NextWorkoutRecommendation, recommend_next_workout
 
 log = get_logger(__name__)
 
@@ -24,6 +25,7 @@ class AnalyzeResult:
     flags: list[dict[str, Any]]
     explanation: str | None
     snapshot_id: int
+    next_workout: NextWorkoutRecommendation | None = None
 
 
 class AnalyzeService:
@@ -59,6 +61,11 @@ class AnalyzeService:
             cfg=self._cfg,
             now_ts=now_ts,
         )
+        next_workout = recommend_next_workout(
+            metrics=result["metrics"],
+            flags=result["flags"],
+            thresholds=self._cfg.thresholds,
+        )
 
         explanation: str | None = None
         if self._llm is not None:
@@ -86,4 +93,5 @@ class AnalyzeService:
             flags=result["flags"],
             explanation=explanation,
             snapshot_id=snapshot_id,
+            next_workout=next_workout,
         )
