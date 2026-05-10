@@ -124,8 +124,13 @@ async def overview(
     since_ts = _date_to_unix_start(since_d)
     until_ts = _date_to_unix_end(today)
 
+    # Fixed 16-week heatmap needs at least 16 weeks of workouts even when
+    # the user-selected `weeks` is shorter (default is 14).
+    workouts_since_d = min(since_d, today - timedelta(weeks=16))
+    workouts_since_ts = _date_to_unix_start(workouts_since_d)
+
     workouts = await repo.get_workouts_in_window(
-        c, user_id=user_id, since_ts=since_ts, until_ts=until_ts
+        c, user_id=user_id, since_ts=workouts_since_ts, until_ts=until_ts
     )
     meets_rows = await repo_pl.list_meets(c, user_id=user_id)
     next_meet_row = await repo_pl.get_next_meet(c, user_id=user_id)
