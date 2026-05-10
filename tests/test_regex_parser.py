@@ -406,6 +406,37 @@ def test_single_weight_star_reps_standalone() -> None:
     assert ex.sets[0].reps == 2
 
 
+def test_decimal_single_weight_reps_full_message() -> None:
+    """Screenshot regression: decimal top single after slash ladders."""
+    text = (
+        "Жим лежа\n"
+        "80/100x6\n"
+        "115/130/145/145/157,5x3\n"
+        "157,5x1\n"
+        "Сгибания голени\n"
+        "50x20x4\n"
+        "Разгибания голени\n"
+        "60x15x4\n"
+        "Тяга за голову\n"
+        "52x20x4\n"
+        "Горизонтальная тяга в Хаммере\n"
+        "60x15x4"
+    )
+    result = parse(text)
+    assert result is not None
+    assert len(result) == 5
+
+    bench = result[0]
+    assert bench.raw_name == "Жим лежа"
+    assert [s.weight_kg for s in bench.sets] == [
+        80, 100, 115, 130, 145, 145, 157.5, 157.5,
+    ]
+    assert [s.reps for s in bench.sets] == [6, 6, 3, 3, 3, 3, 3, 1]
+
+    for ex in result[1:]:
+        assert len(ex.sets) == 4
+
+
 def test_rep_range_w_nr() -> None:
     """90 3*8-12 → weight=90, 3 sets of 8 reps (lower bound kept, range discarded)."""
     result = parse("Фронтальный присед 90 3*8-12")
@@ -449,6 +480,15 @@ def test_nxrxw_preserved_when_last_gt_first() -> None:
     ex = result[0]
     assert len(ex.sets) == 3
     assert all(s.weight_kg == 100 and s.reps == 5 for s in ex.sets)
+
+
+def test_wxrxn_decimal_weight() -> None:
+    """187.5x4x3 → weight=187.5, reps=4, sets=3 (decimal first ⇒ WxRxN)."""
+    result = parse("присед\n187.5x4x3")
+    assert result is not None
+    ex = result[0]
+    assert len(ex.sets) == 3
+    assert all(s.weight_kg == 187.5 and s.reps == 4 for s in ex.sets)
 
 
 def test_r_na_w() -> None:

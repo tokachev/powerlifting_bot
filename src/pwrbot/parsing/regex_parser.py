@@ -7,6 +7,7 @@ Handles common formats:
 - "20/40/60/80/100*10" (ladder of weights across a shared rep count)
 - "100 3*8" / "220 1 * 2" (weight-prefix: weight, then sets*reps)
 - "4*15" / "4 * 15" (bodyweight / machine sets with no weight)
+- "157,5x1" (single weight × reps continuation)
 - "@rpe 8" / "@8" / "рпе 8"
 - "разминка" / "warmup" marker → is_warmup=True for that line
 
@@ -48,8 +49,11 @@ RE_W_NR = re.compile(
     re.IGNORECASE,
 )
 # "3x5x100" / "3х5х100" / "3*5*100" — sets × reps × weight
+# First slot is `_NUM` (not `\d+`) so the WxRxN variant with a decimal weight
+# like `187.5x4x3` matches; the integer-vs-decimal disambiguation happens in
+# `_build_nrw`.
 RE_NRW = re.compile(
-    rf"(?P<sets>\d+)\s*{_X}\s*(?P<reps>\d+){_REP_RANGE}\s*{_X}\s*(?P<weight>{_NUM})\s*{_KG}\b",
+    rf"(?P<sets>{_NUM})\s*{_X}\s*(?P<reps>\d+){_REP_RANGE}\s*{_X}\s*(?P<weight>{_NUM})\s*{_KG}\b",
     re.IGNORECASE,
 )
 # "5x10 100кг" — sets × reps, then weight after a space
@@ -68,11 +72,12 @@ RE_SETS_OF = re.compile(
     re.IGNORECASE,
 )
 # "4*15" / "4 x 15" / "4 * 15" — sets × reps, no weight.
+# Decimal / implausibly large first slot is treated as weight × reps.
 # Negative lookahead on a following number prevents this pattern from eating
 # `3x8 80` as (3 sets × 8 reps @ 0kg) and losing the weight — that case belongs
 # to RE_NR_W which is tried before this one.
 RE_N_STAR_R = re.compile(
-    rf"(?P<sets>\d+)\s*{_X}\s*(?P<reps>\d+){_REP_RANGE}\b(?!\s*{_NUM})",
+    rf"(?P<sets>{_NUM})\s*{_X}\s*(?P<reps>\d+){_REP_RANGE}\b(?!\s*{_NUM})",
     re.IGNORECASE,
 )
 # "14 на 16" — reps at weight, implied 1 set
@@ -209,15 +214,20 @@ def _build_w_nr(
 def _build_nrw(
     m: re.Match[str], rpe: float | None, is_warmup: bool
 ) -> list[ParsedSet] | None:
-    a = int(m.group("sets"))
+    a = _to_float(m.group("sets"))
     b = int(m.group("reps"))
     c = _to_float(m.group("weight"))
-    if a > c:
-        # WxRxN: first number > last → weight × reps × sets (e.g. 50х20х4)
-        n, r, w = int(c), b, float(a)
+    a_is_int = a.is_integer()
+    # Decimal first slot ⇒ must be weight (sets/reps are never fractional),
+    # so route to WxRxN. Otherwise use the magnitude heuristic.
+    if not a_is_int or a > c:
+        # WxRxN: weight × reps × sets (e.g. 50х20х4, 187.5х4х3)
+        if not c.is_integer():
+            return None  # sets must be integer — let LLM fallback decide
+        n, r, w = int(c), b, a
     else:
         # NxRxW: standard sets × reps × weight (e.g. 3x5x100)
-        n, r, w = a, b, c
+        n, r, w = int(a), b, c
     return [ParsedSet(reps=r, weight_kg=w, rpe=rpe, is_warmup=is_warmup) for _ in range(n)]
 
 
@@ -254,12 +264,13 @@ _MAX_BW_SETS = 20  # bodyweight set count cap for N*R fallback pattern
 def _build_n_star_r(
     m: re.Match[str], rpe: float | None, is_warmup: bool
 ) -> list[ParsedSet] | None:
-    n = int(m.group("sets"))
+    first = _to_float(m.group("sets"))
     r = int(m.group("reps"))
-    if n > _MAX_BW_SETS:
+    if not first.is_integer() or first > _MAX_BW_SETS:
         # Implausible set count — treat N as weight (1 set of R reps @ N kg).
-        # Covers single-weight continuations like "220 *2" after a ladder.
-        return [ParsedSet(reps=r, weight_kg=float(n), rpe=rpe, is_warmup=is_warmup)]
+        # Covers single-weight continuations like "220 *2" or "157,5x1" after a ladder.
+        return [ParsedSet(reps=r, weight_kg=first, rpe=rpe, is_warmup=is_warmup)]
+    n = int(first)
     return [ParsedSet(reps=r, weight_kg=0.0, rpe=rpe, is_warmup=is_warmup) for _ in range(n)]
 
 
