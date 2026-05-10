@@ -670,18 +670,20 @@ def compute_calendar_heatmap_16w(
             continue
         for ex in w.exercises:
             entry = catalog.by_canonical(ex.canonical_name or "")
+            target = entry.target_group if entry is not None else None
+            coef = entry.main_lift_coefficient if entry is not None else None
             is_primary_lift = (
-                entry is not None
-                and entry.target_group in max_by_group
-                and entry.main_lift_coefficient == 1.0
+                target in max_by_group
+                and coef is not None
+                and math.isclose(coef, 1.0)
             )
             for s in ex.sets:
                 if s.is_warmup or s.reps <= 0:
                     continue
                 kg = s.weight_g / 1000.0
                 tonnage[d] += s.reps * kg
-                if is_primary_lift and kg > 0:
-                    bucket_map = max_by_group[entry.target_group]  # type: ignore[index]
+                if is_primary_lift and target is not None and kg > 0:
+                    bucket_map = max_by_group[target]
                     prev = bucket_map.get(d)
                     if prev is None or kg > prev:
                         bucket_map[d] = kg

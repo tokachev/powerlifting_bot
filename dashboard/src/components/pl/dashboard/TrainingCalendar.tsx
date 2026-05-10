@@ -13,8 +13,10 @@ function buildTooltip(
     ? c.date
     : parsed.toLocaleDateString(locale, { year: 'numeric', month: 'short', day: 'numeric' })
   lines.push(dateLabel)
+  const formatKg = (value: number) =>
+    value.toLocaleString(locale, { maximumFractionDigits: 1 })
   if (c.tonnage_kg > 0) {
-    lines.push(`${t('tonnage')}: ${c.tonnage_kg} ${t('kg')}`)
+    lines.push(`${t('tonnage')}: ${formatKg(c.tonnage_kg)} ${t('kg')}`)
   }
   const lifts: Array<[string, number | null]> = [
     ['squat', c.max_squat_kg],
@@ -23,7 +25,7 @@ function buildTooltip(
   ]
   for (const [key, value] of lifts) {
     if (value != null) {
-      lines.push(`${t(key)}: ${value} ${t('kg')}`)
+      lines.push(`${t(key)}: ${formatKg(value)} ${t('kg')}`)
     }
   }
   return lines.join('\n')
