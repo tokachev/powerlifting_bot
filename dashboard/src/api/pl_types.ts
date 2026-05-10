@@ -66,6 +66,10 @@ export interface ReadinessSummary {
 export interface CalendarCell {
   date: string
   intensity: number
+  tonnage_kg: number
+  max_squat_kg: number | null
+  max_bench_kg: number | null
+  max_deadlift_kg: number | null
 }
 
 export interface BodyweightPoint {

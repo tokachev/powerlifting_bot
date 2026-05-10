@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 from pwrbot.api.main import create_app
 from pwrbot.db import repo
+from pwrbot.db.repo import ExerciseRow, SetRow
 from pwrbot.domain.catalog import load_catalog
 from tests.conftest import REPO_ROOT
 
@@ -33,6 +36,48 @@ async def test_overview_empty_user(client, user_id):
     assert data["kpi"]["total_kg"] == 0.0
     assert len(data["big3"]) == 3
     assert data["next_meet"] is None
+
+
+async def test_overview_calendar_includes_workouts_older_than_weeks(
+    client, conn, user_id
+):
+    # Default `weeks=14` would otherwise drop the first 2 weeks of the fixed
+    # 16-week heatmap. Insert a workout 15 weeks ago and verify it shows up.
+    today = datetime.now(UTC).date()
+    fifteen_weeks_ago = today - timedelta(weeks=15)
+    performed_at = int(
+        datetime(
+            fifteen_weeks_ago.year,
+            fifteen_weeks_ago.month,
+            fifteen_weeks_ago.day,
+            tzinfo=UTC,
+        ).timestamp()
+    )
+    await repo.insert_workout(
+        conn,
+        user_id=user_id,
+        performed_at=performed_at,
+        source_text="back squat 5x100",
+        exercises=[
+            ExerciseRow(
+                position=0,
+                raw_name="присед",
+                canonical_name="back_squat",
+                movement_pattern="squat",
+                sets=[SetRow(reps=5, weight_g=100_000, rpe=None, is_warmup=False, set_index=0)],
+            ),
+        ],
+    )
+
+    r = await client.get(f"/api/pl/overview?user_id={user_id}")
+    assert r.status_code == 200, r.text
+    calendar = r.json()["calendar"]
+    assert len(calendar) == 112
+    iso = fifteen_weeks_ago.isoformat()
+    cell = next(c for c in calendar if c["date"] == iso)
+    assert cell["tonnage_kg"] == 500.0
+    assert cell["max_squat_kg"] == 100.0
+    assert cell["intensity"] == 4  # only nonzero day → it is the peak
 
 
 async def test_lift_detail(client, user_id):

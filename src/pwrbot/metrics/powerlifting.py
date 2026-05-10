@@ -6,6 +6,7 @@ Pure deterministic functions — no DB, no clock.
 
 from __future__ import annotations
 
+import math
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -625,45 +626,89 @@ def compute_readiness(rows: list[RecoveryRow]) -> ReadinessSummary:
 # ============================================================== Calendar 16w heatmap
 
 
-def compute_calendar_heatmap_16w(
-    workouts: list[WorkoutRow], *, today: date
-) -> list[tuple[date, int]]:
-    """Return one (date, intensity_0_to_4) per day for last 112 days (16 weeks).
+@dataclass(slots=True)
+class CalendarDayCell:
+    day: date
+    intensity: int  # 0..4 — bucket of daily tonnage relative to window peak
+    tonnage_kg: float
+    max_squat_kg: float | None
+    max_bench_kg: float | None
+    max_deadlift_kg: float | None
 
-    Intensity bucket based on daily working-set count:
-      0: no workout
-      1: 1-9 sets
-      2: 10-14
-      3: 15-19
-      4: 20+
+
+def compute_calendar_heatmap_16w(
+    workouts: list[WorkoutRow], *, catalog: Catalog, today: date
+) -> list[CalendarDayCell]:
+    """Return one CalendarDayCell per day for last 112 days (16 weeks).
+
+    intensity is bucketed against the peak daily tonnage in the same window:
+      0: no working sets that day
+      1: (0%, 25%] of peak
+      2: (25%, 50%]
+      3: (50%, 75%]
+      4: (75%, 100%]
+
+    max_<group>_kg is the heaviest single-set weight (raw kg) on that day for
+    a *primary competition lift only* — catalog entry with target_group set
+    and main_lift_coefficient == 1.0. Variants (front squat, paused bench,
+    etc.) contribute to tonnage_kg but never to max_*.
     """
     since = today - timedelta(days=111)
-    by_date: dict[date, int] = defaultdict(int)
+    tonnage: dict[date, float] = defaultdict(float)
+    max_squat: dict[date, float] = {}
+    max_bench: dict[date, float] = {}
+    max_deadlift: dict[date, float] = {}
+    max_by_group: dict[str, dict[date, float]] = {
+        "squat": max_squat,
+        "bench": max_bench,
+        "deadlift": max_deadlift,
+    }
+
     for w in workouts:
         d = _ts_to_date(w.performed_at)
         if d < since or d > today:
             continue
         for ex in w.exercises:
+            entry = catalog.by_canonical(ex.canonical_name or "")
+            target = entry.target_group if entry is not None else None
+            coef = entry.main_lift_coefficient if entry is not None else None
+            is_primary_lift = (
+                target in max_by_group
+                and coef is not None
+                and math.isclose(coef, 1.0)
+            )
             for s in ex.sets:
                 if s.is_warmup or s.reps <= 0:
                     continue
-                by_date[d] += 1
+                kg = s.weight_g / 1000.0
+                tonnage[d] += s.reps * kg
+                if is_primary_lift and target is not None and kg > 0:
+                    bucket_map = max_by_group[target]
+                    prev = bucket_map.get(d)
+                    if prev is None or kg > prev:
+                        bucket_map[d] = kg
 
-    def bucket(n: int) -> int:
-        if n == 0:
+    peak = max(tonnage.values(), default=0.0)
+
+    def bucket(t: float) -> int:
+        if t <= 0 or peak <= 0:
             return 0
-        if n < 10:
-            return 1
-        if n < 15:
-            return 2
-        if n < 20:
-            return 3
-        return 4
+        return max(1, min(4, math.ceil(4 * t / peak)))
 
-    out: list[tuple[date, int]] = []
+    out: list[CalendarDayCell] = []
     for i in range(112):
         d = since + timedelta(days=i)
-        out.append((d, bucket(by_date.get(d, 0))))
+        t = tonnage.get(d, 0.0)
+        out.append(
+            CalendarDayCell(
+                day=d,
+                intensity=bucket(t),
+                tonnage_kg=t,
+                max_squat_kg=max_squat.get(d),
+                max_bench_kg=max_bench.get(d),
+                max_deadlift_kg=max_deadlift.get(d),
+            )
+        )
     return out
 
 

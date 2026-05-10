@@ -76,6 +76,10 @@ class ReadinessSummary(BaseModel):
 class CalendarCell(BaseModel):
     date: date
     intensity: int  # 0..4
+    tonnage_kg: float
+    max_squat_kg: float | None = None
+    max_bench_kg: float | None = None
+    max_deadlift_kg: float | None = None
 
 
 class BodyweightPoint(BaseModel):
