@@ -201,8 +201,18 @@ async def overview(
         tonnage_by_lift[lift] = points
         intensity_by_lift[lift] = points
 
-    calendar_raw = compute_calendar_heatmap_16w(workouts, today=today)
-    calendar = [CalendarCell(date=d, intensity=v) for d, v in calendar_raw]
+    calendar_raw = compute_calendar_heatmap_16w(workouts, catalog=cat, today=today)
+    calendar = [
+        CalendarCell(
+            date=c.day,
+            intensity=c.intensity,
+            tonnage_kg=round(c.tonnage_kg, 1),
+            max_squat_kg=c.max_squat_kg,
+            max_bench_kg=c.max_bench_kg,
+            max_deadlift_kg=c.max_deadlift_kg,
+        )
+        for c in calendar_raw
+    ]
 
     readiness_s = compute_readiness(recovery_rows)
     readiness = ReadinessSummary(
