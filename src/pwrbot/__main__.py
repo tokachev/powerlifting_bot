@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import asyncio
 
+import httpx
+
 from pwrbot.bot.app import build_bot, build_dispatcher
 from pwrbot.config import load_settings
 from pwrbot.db.connection import open_and_bootstrap
 from pwrbot.domain.catalog import load_catalog
+from pwrbot.llm.codex_client import CodexClient
 from pwrbot.llm.ollama_client import OllamaClient
 from pwrbot.llm.prompt_loader import PromptLoader
 from pwrbot.logging_setup import configure_logging, get_logger
@@ -17,6 +20,28 @@ from pwrbot.services.analyze import AnalyzeService
 from pwrbot.services.ingest import IngestService
 from pwrbot.services.max_query import MaxQueryService
 from pwrbot.services.technique import TechniqueAnalysisService
+
+
+def _readyz_url(ws_url: str) -> str:
+    if ws_url.startswith("wss://"):
+        base = "https://" + ws_url[len("wss://") :]
+    elif ws_url.startswith("ws://"):
+        base = "http://" + ws_url[len("ws://") :]
+    else:
+        base = ws_url
+    return base.rstrip("/") + "/readyz"
+
+
+async def _log_codex_ready(ws_url: str) -> None:
+    log = get_logger("pwrbot")
+    try:
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            resp = await client.get(_readyz_url(ws_url))
+            resp.raise_for_status()
+    except Exception as exc:
+        log.warning("codex_ready_failed", error=str(exc))
+        return
+    log.info("codex_ready")
 
 
 async def _main_async() -> None:
@@ -34,9 +59,17 @@ async def _main_async() -> None:
         timeout_s=settings.ollama_timeout_s,
         max_retries=yaml_cfg.llm.max_retries,
     )
+    codex = None
+    if settings.codex_enabled:
+        codex = CodexClient(
+            ws_url=settings.codex_ws_url,
+            token_file_path=settings.codex_token_file,
+            model=yaml_cfg.llm.codex.model,
+        )
+        await _log_codex_ready(settings.codex_ws_url)
     llm_parser = LLMParser(client=ollama, prompts=prompts, catalog=catalog)
     pipeline = ParsingPipeline(catalog=catalog, cfg=yaml_cfg, llm_parser=llm_parser)
-    analyze_svc = AnalyzeService(cfg=yaml_cfg, llm=llm_parser)
+    analyze_svc = AnalyzeService(cfg=yaml_cfg, llm=llm_parser, codex=codex)
     ingest_svc = IngestService(
         pipeline=pipeline, analyzer=analyze_svc, catalog=catalog, cfg=yaml_cfg
     )

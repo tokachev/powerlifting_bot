@@ -1,4 +1,34 @@
 services:
+  codex-app-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.codex
+      args:
+        CODEX_VERSION: "0.129.0"
+    image: pwrbot-codex-app-server:local
+    container_name: pwrbot-codex-app-server
+    restart: unless-stopped
+    profiles: ["codex"]
+
+    # Mount the host Codex login/config/token into the container. This keeps
+    # ChatGPT-account auth in one place and avoids API keys.
+    volumes:
+      - type: bind
+        source: ${HOME}/.codex
+        target: /root/.codex
+        bind:
+          create_host_path: false
+
+    ports:
+      - "127.0.0.1:4501:4500"
+
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:4500/readyz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
   pwrbot:
     build: .
     image: pwrbot:local
@@ -16,9 +46,18 @@ services:
       CONFIG_PATH: /app/config/settings.yaml
       EXERCISES_PATH: /app/config/exercises.yaml
       PROMPTS_DIR: /app/prompts
+      CODEX_ENABLED: ${CODEX_ENABLED:-false}
+      CODEX_WS_URL: ws://codex-app-server:4500
+      CODEX_TOKEN_FILE: /run/secrets/codex-app-server-token
 
     volumes:
       - ./data:/app/data
+      - type: bind
+        source: ${HOME}/.codex/codex-app-server-token
+        target: /run/secrets/codex-app-server-token
+        read_only: true
+        bind:
+          create_host_path: false
 
     # On Linux, host.docker.internal is not resolvable by default — this fixes it.
     # On macOS/Windows Docker Desktop it is already provided; this line is a no-op.

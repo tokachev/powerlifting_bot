@@ -35,6 +35,9 @@ class _StubLLM:
     async def explain(self, *, metrics, flags, window_days) -> str:
         return f"fake explanation for {window_days}d, flags={len(flags)}"
 
+    def render_explain_prompt(self, *, metrics, flags, window_days) -> tuple[str, str]:
+        return "system", f"user {window_days}"
+
 
 def _make_services(catalog, yaml_config, llm):
     pipeline = ParsingPipeline(catalog=catalog, cfg=yaml_config, llm_parser=llm)  # type: ignore[arg-type]
@@ -67,7 +70,10 @@ async def test_log_then_auto_analyze(conn, yaml_config) -> None:
 
     assert result.analysis is not None
     assert result.analysis.window_days == 7
-    assert result.analysis.explanation == "fake explanation for 7d, flags=0"
+    assert result.analysis.explanation_gemma.text == "fake explanation for 7d, flags=0"
+    assert result.analysis.explanation_gemma.latency_s is not None
+    assert result.analysis.explanation_gemma.latency_s > 0
+    assert result.analysis.explanation_codex.error == "disabled"
     row = await (
         await conn.execute("SELECT COUNT(*) AS c FROM analysis_snapshots")
     ).fetchone()

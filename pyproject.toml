@@ -19,6 +19,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "opencv-python-headless>=4.9.0",
     "mediapipe>=0.10.14",
+    "websockets>=14",
 ]
 
 [project.optional-dependencies]

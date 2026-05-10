@@ -15,7 +15,11 @@ from pwrbot.db.connection import bootstrap
 from pwrbot.domain.catalog import load_catalog
 from pwrbot.domain.models import ExercisePayload, SetPayload, WorkoutPayload
 from pwrbot.parsing.pipeline import ParsingPipeline
-from pwrbot.services.analyze import AnalyzeResult, AnalyzeService
+from pwrbot.services.analyze import (
+    AnalyzeResult,
+    AnalyzeService,
+    ExplainBackendResult,
+)
 from pwrbot.services.ingest import IngestService
 from pwrbot.services.max_query import MaxQueryService
 from pwrbot.services.technique import TechniqueAnalysisService
@@ -96,10 +100,26 @@ def test_format_analysis_no_flags() -> None:
             }
         },
         flags=[],
-        explanation="всё норм",
+        explanation_gemma=ExplainBackendResult(
+            text="push/pull hard-сетов in window",
+            latency_s=1.2,
+            error=None,
+        ),
+        explanation_codex=ExplainBackendResult(
+            text=None,
+            latency_s=None,
+            error="disabled",
+        ),
         snapshot_id=1,
     )
     out = format_analysis(result)
     assert "Флагов нет" in out
     assert "1234" in out
-    assert "всё норм" in out
+    assert "тяжёлых сетов" in out
+    assert "по типам движений" in out
+    assert "жимы/тяги на спину" in out
+    assert "в выбранном окне" in out
+    assert "hard" not in out
+    assert "push" not in out
+    assert "window" not in out
+    assert "Codex: отключён" in out

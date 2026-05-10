@@ -50,12 +50,19 @@ class Windows(BaseModel):
     rm_window_days: int = 90
 
 
+class CodexLLMConfig(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    model: str = "gpt-5-codex"
+    timeout_s: float = 30.0
+
+
 class LLMConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
     model: str = "gemma4:e4b"
     base_url: str = "http://localhost:11434"
     timeout_s: int = 60
     max_retries: int = 1
+    codex: CodexLLMConfig = Field(default_factory=CodexLLMConfig)
 
 
 class VisionConfig(BaseModel):
@@ -104,6 +111,12 @@ class Settings(BaseSettings):
     exercises_path: Path = Field(Path("./config/exercises.yaml"), alias="EXERCISES_PATH")
     prompts_dir: Path = Field(Path("./prompts"), alias="PROMPTS_DIR")
     log_level: str = Field("INFO", alias="LOG_LEVEL")
+    codex_ws_url: str = Field("ws://host.docker.internal:4500", alias="CODEX_WS_URL")
+    codex_token_file: Path = Field(
+        Path("/run/secrets/codex-app-server-token"),
+        alias="CODEX_TOKEN_FILE",
+    )
+    codex_enabled: bool = Field(False, alias="CODEX_ENABLED")
 
 
 def load_yaml_config(path: Path) -> YamlConfig:

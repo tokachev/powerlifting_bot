@@ -5,7 +5,7 @@
 2. канонизации неизвестных имён упражнений;
 3. коротких объяснений результатов анализа.
 
-Никакого Anthropic API, облаков, SaaS и RAG.
+Локальная Gemma — основной путь. Codex можно включить опционально для A/B-сравнения объяснений через host-side `codex app-server` (ChatGPT subscription, не API key).
 
 ## Стек
 - Python 3.11+
@@ -103,6 +103,7 @@ docker compose exec pwrbot python -c \
 - `config/settings.yaml` — окна анализа и все пороги правил. Меняй без перезапуска кода (только рестарт бота).
 - `config/exercises.yaml` — каталог упражнений с алиасами и movement_pattern.
 - `prompts/*.md` — LLM-промпты, каждый в отдельном файле.
+- `docs/codex-setup.md` — опциональная настройка host-side Codex app-server для A/B объяснений.
 
 ## Проверка после запуска
 

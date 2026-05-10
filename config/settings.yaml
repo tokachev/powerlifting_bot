@@ -39,6 +39,9 @@ llm:
   base_url: http://localhost:11434
   timeout_s: 60
   max_retries: 1
+  codex:
+    model: gpt-5-codex
+    timeout_s: 30
 
 vision:
   model: null              # null = использовать llm.model; можно указать например "llava:13b"

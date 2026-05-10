@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-pwrbot — single-user Telegram training diary bot. Parses Russian free-text workout logs, persists to SQLite, runs a deterministic rules engine (volume/balance/recovery flags), and uses local Ollama (Gemma 4) only as fallback for parsing, exercise canonicalization, and natural-language explanations. No cloud LLM APIs.
+pwrbot — single-user Telegram training diary bot. Parses Russian free-text workout logs, persists to SQLite, runs a deterministic rules engine (volume/balance/recovery flags), and uses local Ollama (Gemma 4) as the primary LLM path for parsing, exercise canonicalization, and natural-language explanations. Codex (`gpt-5-codex` via host app-server) can be enabled optionally for A/B comparison of analysis explanations; local Gemma remains the primary path. Codex goes through the host-side app-server using the user's ChatGPT subscription, not an API key.
 
 There's also a React dashboard (FastAPI backend + Vite/React frontend) served on :8000.
 
@@ -54,7 +54,8 @@ Telegram message
       - if unresolved exercises → PendingClarification (FSM state, user picks)
       - else → persist to SQLite + auto-run 7-day analysis
   → AnalyzeService (services/analyze.py)
-      - loads 28d history, runs rules engine, LLM explains findings
+      - loads 28d history, runs rules engine, Gemma explains findings
+      - optionally asks Codex for an A/B explanation without changing DB schema
   → formatted Telegram reply
 ```
 
@@ -76,7 +77,7 @@ Telegram message
 | Rules engine | `rules/` | volume, balance, flags — pure functions, no I/O |
 | Services | `services/` | ingest (parse→persist→analyze), analyze, reporting (dashboard aggregations) |
 | DB | `db/` | aiosqlite, repo.py (CRUD), schema.sql |
-| LLM | `llm/` | OllamaClient (httpx, retry-once), PromptLoader, LLMParser |
+| LLM | `llm/` | OllamaClient (httpx, retry-once), CodexClient (optional WS app-server), PromptLoader, LLMParser |
 | API | `api/` | FastAPI dashboard backend, serves React SPA from `dashboard/dist` |
 | Config | `config.py` | env via pydantic-settings (Settings), YAML via pydantic (YamlConfig) |
 

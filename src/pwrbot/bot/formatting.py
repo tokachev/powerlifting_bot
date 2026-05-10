@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 
 from pwrbot.db.repo import WorkoutRow
@@ -18,12 +19,47 @@ _BIG3_DISPLAY: dict[str, str] = {
     "deadlift": "становая",
     "sumo_deadlift": "становая сумо",
 }
+_TELEGRAM_MESSAGE_LIMIT = 4096
+_EXPLANATION_LIMIT = 1500
+_PATTERN_DISPLAY: dict[str, str] = {
+    "accessory": "вспомогательные",
+    "hinge": "становая/наклоны",
+    "pull": "тяги на спину",
+    "push": "жимы",
+    "squat": "приседания",
+}
+_EXPLANATION_REPLACEMENTS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"\bpush\s*/\s*pull\b", re.IGNORECASE), "жимы/тяги на спину"),
+    (re.compile(r"\bsquat\s*/\s*hinge\b", re.IGNORECASE), "приседания/становая и наклоны"),
+    (re.compile(r"\bhard[-_ ]sets?\b", re.IGNORECASE), "тяжёлые сеты"),
+    (re.compile(r"\bhard[-_ ]сетов\b", re.IGNORECASE), "тяжёлых сетов"),
+    (re.compile(r"\bhard[-_ ]сета\b", re.IGNORECASE), "тяжёлых сета"),
+    (re.compile(r"\bwindow\b", re.IGNORECASE), "выбранном окне"),
+    (re.compile(r"\bpattern\b", re.IGNORECASE), "типе движения"),
+    (re.compile(r"\bratio\b", re.IGNORECASE), "соотношение"),
+    (re.compile(r"\btarget\b", re.IGNORECASE), "цель"),
+    (re.compile(r"\bvolume\b", re.IGNORECASE), "объём"),
+    (re.compile(r"\bfocus\b", re.IGNORECASE), "акцент"),
+    (re.compile(r"\bvs\b", re.IGNORECASE), "против"),
+    (re.compile(r"\bin\b", re.IGNORECASE), "в"),
+    (re.compile(r"\baccessory\b", re.IGNORECASE), "вспомогательные упражнения"),
+    (re.compile(r"\bhinge\b", re.IGNORECASE), "становая/наклоны"),
+    (re.compile(r"\bpull\b", re.IGNORECASE), "тяги на спину"),
+    (re.compile(r"\bpush\b", re.IGNORECASE), "жимы"),
+    (re.compile(r"\bsquat\b", re.IGNORECASE), "приседания"),
+)
 
 
 def _fmt_weight(kg: float) -> str:
     if kg == int(kg):
         return f"{int(kg)}"
     return f"{kg:.1f}"
+
+
+def _fmt_pattern(pattern: str | None) -> str:
+    if pattern is None:
+        return "?"
+    return _PATTERN_DISPLAY.get(pattern, pattern)
 
 
 def _fmt_set(reps: int, weight_kg: float, rpe: float | None, is_warmup: bool) -> str:
@@ -81,13 +117,14 @@ def format_flag(f: dict) -> str:
         ratio_str = "∞" if ratio == float("inf") or ratio is None else f"{ratio:.2f}"
         if axis == "push_pull":
             return (
-                f"дисбаланс push/pull: {ratio_str} "
-                f"(push {f.get('push_hard_sets')} / pull {f.get('pull_hard_sets')})"
+                f"дисбаланс жимы/тяги на спину по 28д: {ratio_str} "
+                f"(жимы {f.get('push_hard_sets')} / тяги {f.get('pull_hard_sets')})"
             )
         if axis == "squat_hinge":
             return (
-                f"дисбаланс squat/hinge: {ratio_str} "
-                f"(squat {f.get('squat_hard_sets')} / hinge {f.get('hinge_hard_sets')})"
+                f"дисбаланс приседания/становая и наклоны по 28д: {ratio_str} "
+                f"(приседания {f.get('squat_hard_sets')} / "
+                f"становая и наклоны {f.get('hinge_hard_sets')})"
             )
     if kind == "recovery_risk":
         if f.get("subtype") == "tonnage_spike":
@@ -96,10 +133,36 @@ def format_flag(f: dict) -> str:
                 f"({f.get('previous_tonnage_kg')} → {f.get('current_tonnage_kg')} кг)"
             )
         return (
-            f"перегрузка {f.get('pattern')}: "
-            f"{f.get('hard_sets_7d')} hard-сетов за 7д (лимит {f.get('cap')})"
+            f"перегрузка {_fmt_pattern(f.get('pattern'))}: "
+            f"{f.get('hard_sets_7d')} тяжёлых сетов за 7 дней (лимит {f.get('cap')})"
         )
     return str(f)
+
+
+def _truncate_text(text: str, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1].rstrip() + "…"
+
+
+def _russify_explanation(text: str) -> str:
+    for pattern, replacement in _EXPLANATION_REPLACEMENTS:
+        text = pattern.sub(replacement, text)
+    return text
+
+
+def _format_explain_backend(name: str, result) -> str:
+    if result.text:
+        text = _russify_explanation(result.text.strip())
+        text = _truncate_text(text, _EXPLANATION_LIMIT)
+        if result.latency_s is not None:
+            return f"{name} ({result.latency_s:.1f}s):\n{text}"
+        return f"{name}:\n{text}"
+    if name == "Codex" and result.error == "disabled":
+        return "Codex: отключён"
+    if result.error:
+        return f"{name}: ошибка ({_truncate_text(result.error, 300)})"
+    return f"{name}: нет объяснения"
 
 
 def format_analysis(result: AnalyzeResult) -> str:
@@ -107,11 +170,13 @@ def format_analysis(result: AnalyzeResult) -> str:
     window = result.metrics.get("window", {})
     tonnage = window.get("total_tonnage_kg", 0)
     hard_sets = window.get("total_hard_sets", 0)
-    lines.append(f"  тоннаж: {_fmt_weight(tonnage)} кг, hard-сетов: {hard_sets}")
+    lines.append(f"  тоннаж: {_fmt_weight(tonnage)} кг, тяжёлых сетов: {hard_sets}")
     hard_by_p = window.get("hard_sets_by_pattern", {})
     if hard_by_p:
-        parts = ", ".join(f"{k}: {v}" for k, v in sorted(hard_by_p.items()))
-        lines.append(f"  по паттернам: {parts}")
+        parts = ", ".join(
+            f"{_fmt_pattern(k)}: {v}" for k, v in sorted(hard_by_p.items())
+        )
+        lines.append(f"  по типам движений: {parts}")
 
     if result.flags:
         lines.append("Флаги:")
@@ -120,10 +185,15 @@ def format_analysis(result: AnalyzeResult) -> str:
     else:
         lines.append("Флагов нет.")
 
-    if result.explanation:
+    explanations = [
+        _format_explain_backend("Gemma", result.explanation_gemma),
+        _format_explain_backend("Codex", result.explanation_codex),
+    ]
+    if explanations:
         lines.append("")
-        lines.append(result.explanation)
-    return "\n".join(lines)
+        lines.append("\n\n".join(explanations))
+    text = "\n".join(lines)
+    return _truncate_text(text, _TELEGRAM_MESSAGE_LIMIT)
 
 
 def format_rm_estimates(
