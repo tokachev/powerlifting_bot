@@ -182,6 +182,17 @@ async def reparse_text_in_clarify(
     log.info("clarify_draft_dropped", unresolved_remaining=n_unresolved)
     await state.clear()
     await message.answer("Сбросил предыдущий черновик, парсю новое сообщение.")
+    # Try the body-weight handler first — otherwise plain "вес 96.2" gets
+    # re-parsed as a workout-log line, since calling ingest_text directly
+    # bypasses the router chain that would normally route to weight.py.
+    from pwrbot.bot.handlers.weight import IsWeightMessage, handle_weight
+    weight_match = await IsWeightMessage()(message)
+    if weight_match:
+        await handle_weight(
+            message, conn,
+            **(weight_match if isinstance(weight_match, dict) else {}),
+        )
+        return
     # Lazy import to avoid a circular import (log → clarify → log).
     from pwrbot.bot.handlers.log import ingest_text
     await ingest_text(message, message.text or "", conn, ingest, state)
