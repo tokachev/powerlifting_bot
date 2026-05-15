@@ -678,15 +678,73 @@ html, body {
   grid-template-rows: repeat(7, 11px);
   grid-auto-columns: 11px;
   gap: 3px;
+  overflow: visible;
 }
 .heat span {
+  position: relative;
   width: 11px; height: 11px; border-radius: 2px;
   background: var(--bg-3);
+  outline: 0;
+}
+.heat span:hover,
+.heat span:focus-visible {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--fg) 22%, transparent);
+  z-index: 20;
 }
 .heat span[data-v="1"] { background: color-mix(in srgb, var(--accent) 25%, var(--bg-2)); }
 .heat span[data-v="2"] { background: color-mix(in srgb, var(--accent) 50%, var(--bg-2)); }
 .heat span[data-v="3"] { background: color-mix(in srgb, var(--accent) 75%, var(--bg-2)); }
 .heat span[data-v="4"] { background: var(--accent); }
+.heat span[data-tip]::before,
+.heat span[data-tip]::after {
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  transform: translate3d(-50%, 6px, 0);
+  transition: opacity 120ms ease, transform 120ms ease;
+  z-index: 100;
+}
+.heat span[data-tip]::before {
+  content: "";
+  left: 50%;
+  top: calc(100% + 6px);
+  width: 8px;
+  height: 8px;
+  background: var(--bg-1);
+  border-left: 1px solid var(--line-2);
+  border-top: 1px solid var(--line-2);
+  transform: translate3d(-50%, 6px, 0) rotate(45deg);
+}
+.heat span[data-tip]::after {
+  content: attr(data-tip);
+  left: 50%;
+  top: calc(100% + 10px);
+  min-width: 150px;
+  max-width: 240px;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--bg-1) 94%, transparent);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r);
+  box-shadow: 0 12px 32px rgba(0,0,0,0.42), inset 0 1px 0 color-mix(in srgb, var(--fg) 7%, transparent);
+  color: var(--fg-1);
+  font-family: var(--f-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1.45;
+  white-space: pre-line;
+}
+.heat span[data-tip]:hover::before,
+.heat span[data-tip]:hover::after,
+.heat span[data-tip]:focus-visible::before,
+.heat span[data-tip]:focus-visible::after {
+  opacity: 1;
+  transform: translate3d(-50%, 0, 0);
+}
+.heat span[data-tip]:hover::before,
+.heat span[data-tip]:focus-visible::before {
+  transform: translate3d(-50%, 0, 0) rotate(45deg);
+}
 
 /* mobile screens */
 .phone-frame {
