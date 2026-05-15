@@ -36,13 +36,18 @@ export function TrainingCalendar({ cells }: { cells: CalendarCell[] }) {
   return (
     <Card title={t('calendar')} meta="16W">
       <div className="heat" role="img" aria-label="training calendar">
-        {cells.map((c) => (
-          <span
-            key={c.date}
-            data-v={c.intensity > 0 ? c.intensity : undefined}
-            title={buildTooltip(c, t, i18n.language)}
-          />
-        ))}
+        {cells.map((c) => {
+          const tooltip = buildTooltip(c, t, i18n.language)
+          return (
+            <span
+              key={c.date}
+              aria-label={tooltip}
+              data-tip={tooltip}
+              data-v={c.intensity > 0 ? c.intensity : undefined}
+              tabIndex={0}
+            />
+          )
+        })}
       </div>
     </Card>
   )
