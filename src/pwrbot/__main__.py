@@ -48,7 +48,13 @@ async def _main_async() -> None:
     settings, yaml_cfg = load_settings()
     configure_logging(settings.log_level)
     log = get_logger("pwrbot")
-    log.info("starting", model=settings.ollama_model, db=str(settings.db_path))
+    log.info(
+        "starting",
+        model=settings.ollama_model,
+        db=str(settings.db_path),
+        codex_enabled=settings.codex_enabled,
+        gemma_analysis_enabled=settings.gemma_analysis_enabled,
+    )
 
     conn = await open_and_bootstrap(settings.db_path)
     catalog = load_catalog(settings.exercises_path)
@@ -64,12 +70,17 @@ async def _main_async() -> None:
         codex = CodexClient(
             ws_url=settings.codex_ws_url,
             token_file_path=settings.codex_token_file,
-            model=yaml_cfg.llm.codex.model,
+            model=settings.codex_model or yaml_cfg.llm.codex.model,
         )
         await _log_codex_ready(settings.codex_ws_url)
     llm_parser = LLMParser(client=ollama, prompts=prompts, catalog=catalog)
     pipeline = ParsingPipeline(catalog=catalog, cfg=yaml_cfg, llm_parser=llm_parser)
-    analyze_svc = AnalyzeService(cfg=yaml_cfg, llm=llm_parser, codex=codex)
+    analyze_svc = AnalyzeService(
+        cfg=yaml_cfg,
+        llm=llm_parser,
+        codex=codex,
+        gemma_enabled=settings.gemma_analysis_enabled,
+    )
     ingest_svc = IngestService(
         pipeline=pipeline, analyzer=analyze_svc, catalog=catalog, cfg=yaml_cfg
     )

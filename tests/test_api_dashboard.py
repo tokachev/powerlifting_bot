@@ -47,6 +47,24 @@ async def test_health(client) -> None:
     assert r.json() == {"status": "ok"}
 
 
+async def test_spa_fallback_preserves_unknown_api_404(tmp_path, monkeypatch) -> None:
+    static_dir = tmp_path / "dist"
+    static_dir.mkdir()
+    (static_dir / "index.html").write_text("<html>spa</html>", encoding="utf-8")
+    monkeypatch.setenv("DASHBOARD_STATIC_DIR", str(static_dir))
+
+    catalog = load_catalog(REPO_ROOT / "config" / "exercises.yaml")
+    app = create_app(catalog, lifespan=False)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as ac:
+        api_response = await ac.get("/api/typo")
+        spa_response = await ac.get("/history")
+
+    assert api_response.status_code == 404
+    assert spa_response.status_code == 200
+    assert "spa" in spa_response.text
+
+
 async def test_catalog_endpoint_includes_new_fields(client) -> None:
     r = await client.get("/api/catalog")
     assert r.status_code == 200

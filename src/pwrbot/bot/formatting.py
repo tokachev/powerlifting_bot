@@ -158,8 +158,8 @@ def _format_explain_backend(name: str, result) -> str:
         if result.latency_s is not None:
             return f"{name} ({result.latency_s:.1f}s):\n{text}"
         return f"{name}:\n{text}"
-    if name == "Codex" and result.error == "disabled":
-        return "Codex: отключён"
+    if result.error == "disabled":
+        return f"{name}: отключён"
     if result.error:
         return f"{name}: ошибка ({_truncate_text(result.error, 300)})"
     return f"{name}: нет объяснения"
