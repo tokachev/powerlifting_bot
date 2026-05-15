@@ -45,10 +45,12 @@ class AnalyzeService:
         cfg: YamlConfig,
         llm: LLMParser | None,
         codex: CodexClient | None = None,
+        gemma_enabled: bool = True,
     ) -> None:
         self._cfg = cfg
         self._llm = llm
         self._codex = codex
+        self._gemma_enabled = gemma_enabled
 
     async def analyze(
         self,
@@ -105,7 +107,7 @@ class AnalyzeService:
             window_days=window_days,
             metrics=result["metrics"],
             flags=result["flags"],
-            explanation=explanation_gemma.text,
+            explanation=explanation_gemma.text or explanation_codex.text,
         )
 
         return AnalyzeResult(
@@ -125,6 +127,8 @@ class AnalyzeService:
         flags: list[dict[str, Any]],
         window_days: int,
     ) -> ExplainBackendResult:
+        if not self._gemma_enabled:
+            return ExplainBackendResult(text=None, latency_s=None, error="disabled")
         if self._llm is None:
             return ExplainBackendResult(text=None, latency_s=None, error="disabled")
 

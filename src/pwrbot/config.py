@@ -117,6 +117,7 @@ class Settings(BaseSettings):
         alias="CODEX_TOKEN_FILE",
     )
     codex_enabled: bool = Field(False, alias="CODEX_ENABLED")
+    gemma_analysis_enabled: bool = Field(True, alias="GEMMA_ANALYSIS_ENABLED")
 
 
 def load_yaml_config(path: Path) -> YamlConfig:

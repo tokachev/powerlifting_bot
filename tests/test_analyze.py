@@ -10,12 +10,16 @@ from pwrbot.services.analyze import AnalyzeService
 class _SlowLLM:
     def __init__(self, delay_s: float) -> None:
         self.delay_s = delay_s
+        self.explain_calls = 0
+        self.render_calls = 0
 
     async def explain(self, *, metrics, flags, window_days) -> str:
+        self.explain_calls += 1
         await asyncio.sleep(self.delay_s)
         return "gemma explanation"
 
     def render_explain_prompt(self, *, metrics, flags, window_days) -> tuple[str, str]:
+        self.render_calls += 1
         return "system prompt", "user prompt"
 
 
@@ -49,7 +53,36 @@ async def test_analyze_dual_explain_parallel(conn, yaml_config) -> None:
     assert elapsed_s < 0.18
     assert codex.calls == [("system prompt", "user prompt", yaml_config.llm.codex.timeout_s)]
 
+    assert llm.explain_calls == 1
+    assert llm.render_calls == 1
+
     row = await (
         await conn.execute("SELECT explanation FROM analysis_snapshots WHERE id = ?", (result.snapshot_id,))
     ).fetchone()
     assert row["explanation"] == "gemma explanation"
+
+
+async def test_analyze_codex_only_when_gemma_disabled(conn, yaml_config) -> None:
+    uid = await repo.get_or_create_user(conn, telegram_id=43)
+    llm = _SlowLLM(delay_s=0.01)
+    codex = _SlowCodex(delay_s=0.01)
+    svc = AnalyzeService(
+        cfg=yaml_config,
+        llm=llm,  # type: ignore[arg-type]
+        codex=codex,  # type: ignore[arg-type]
+        gemma_enabled=False,
+    )
+
+    result = await svc.analyze(conn, user_id=uid, window_days=7)
+
+    assert result.explanation_gemma.text is None
+    assert result.explanation_gemma.error == "disabled"
+    assert result.explanation_codex.text == "codex explanation"
+    assert llm.explain_calls == 0
+    assert llm.render_calls == 1
+    assert codex.calls == [("system prompt", "user prompt", yaml_config.llm.codex.timeout_s)]
+
+    row = await (
+        await conn.execute("SELECT explanation FROM analysis_snapshots WHERE id = ?", (result.snapshot_id,))
+    ).fetchone()
+    assert row["explanation"] == "codex explanation"

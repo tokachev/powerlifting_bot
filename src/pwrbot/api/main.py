@@ -15,6 +15,7 @@ from typing import Annotated
 
 import aiosqlite
 from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -595,10 +596,22 @@ def create_app(
         ]
 
     # Static SPA mount in production. Must come AFTER all /api routes so that
-    # /api/* keeps routing to FastAPI handlers, not to index.html.
+    # /api/* keeps routing to FastAPI handlers, not to index.html. React Router
+    # owns deep links like /history and /lifts/squat, so unknown non-API paths
+    # must fall back to index.html rather than returning FastAPI's 404.
     static_dir = Path(os.environ.get("DASHBOARD_STATIC_DIR", "dashboard/dist"))
     if static_dir.is_dir():
-        app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
+        assets_dir = static_dir / "assets"
+        if assets_dir.is_dir():
+            app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+
+        @app.get("/{full_path:path}", include_in_schema=False)
+        async def spa_fallback(full_path: str) -> FileResponse:
+            requested = (static_dir / full_path).resolve()
+            root = static_dir.resolve()
+            if requested.is_file() and requested.is_relative_to(root):
+                return FileResponse(requested)
+            return FileResponse(static_dir / "index.html")
 
     return app
 
