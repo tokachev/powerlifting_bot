@@ -607,6 +607,8 @@ def create_app(
 
         @app.get("/{full_path:path}", include_in_schema=False)
         async def spa_fallback(full_path: str) -> FileResponse:
+            if full_path == "api" or full_path.startswith("api/"):
+                raise HTTPException(status_code=404, detail="Not Found")
             requested = (static_dir / full_path).resolve()
             root = static_dir.resolve()
             if requested.is_file() and requested.is_relative_to(root):

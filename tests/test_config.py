@@ -50,6 +50,8 @@ def test_load_yaml_config_from_repo(tmp_path: Path) -> None:
 def test_settings_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("TELEGRAM_TOKEN", "test-token")
     monkeypatch.setenv("OLLAMA_MODEL", "gemma3:12b")
+    monkeypatch.setenv("CODEX_MODEL", "gpt-5.5")
     s = Settings(_env_file=None)  # type: ignore[call-arg]
     assert s.telegram_token == "test-token"
     assert s.ollama_model == "gemma3:12b"
+    assert s.codex_model == "gpt-5.5"

@@ -70,7 +70,7 @@ async def _main_async() -> None:
         codex = CodexClient(
             ws_url=settings.codex_ws_url,
             token_file_path=settings.codex_token_file,
-            model=yaml_cfg.llm.codex.model,
+            model=settings.codex_model or yaml_cfg.llm.codex.model,
         )
         await _log_codex_ready(settings.codex_ws_url)
     llm_parser = LLMParser(client=ollama, prompts=prompts, catalog=catalog)
