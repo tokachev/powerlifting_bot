@@ -123,8 +123,8 @@ class PredictService:
         if source:
             lines.append(f"source_text: {source}")
         for exercise in workout.exercises:
-            name = exercise.canonical_name or exercise.raw_name
-            pattern = exercise.movement_pattern or "unknown"
+            name = self._sanitize_prompt_text(exercise.canonical_name or exercise.raw_name)
+            pattern = self._sanitize_prompt_text(exercise.movement_pattern or "unknown")
             set_parts = []
             for s in exercise.sets:
                 weight_kg = s.weight_g / 1000
