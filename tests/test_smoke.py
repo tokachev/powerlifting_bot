@@ -22,6 +22,7 @@ from pwrbot.services.analyze import (
 )
 from pwrbot.services.ingest import IngestService
 from pwrbot.services.max_query import MaxQueryService
+from pwrbot.services.predict import PredictService
 from pwrbot.services.technique import TechniqueAnalysisService
 from tests.conftest import REPO_ROOT
 
@@ -47,6 +48,7 @@ async def test_dispatcher_builds_with_all_routers(conn, yaml_config) -> None:
     )
 
     max_query_svc = MaxQueryService(catalog=catalog, cfg=yaml_config)
+    predict_svc = PredictService(codex=None, timeout_s=12.0)
 
     from unittest.mock import MagicMock
 
@@ -57,13 +59,14 @@ async def test_dispatcher_builds_with_all_routers(conn, yaml_config) -> None:
         ingest=ingest,
         analyze=analyzer,
         max_query_svc=max_query_svc,
+        predict_svc=predict_svc,
         technique_svc=technique_svc,
         yaml_config=yaml_config,
         catalog=catalog,
     )
 
-    # 10 routers expected: basic, view, analyze, edit, stats, clarify, weight, max_query, video, log
-    assert len(dp.sub_routers) == 10
+    # 11 routers expected: basic, view, analyze, edit, stats, predict, clarify, weight, max_query, video, log
+    assert len(dp.sub_routers) == 11
 
 
 def test_format_parsed_workout_basic() -> None:

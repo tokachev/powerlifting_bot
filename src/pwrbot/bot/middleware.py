@@ -14,6 +14,7 @@ from pwrbot.domain.catalog import Catalog
 from pwrbot.services.analyze import AnalyzeService
 from pwrbot.services.ingest import IngestService
 from pwrbot.services.max_query import MaxQueryService
+from pwrbot.services.predict import PredictService
 from pwrbot.services.technique import TechniqueAnalysisService
 
 
@@ -27,6 +28,7 @@ class DIMiddleware(BaseMiddleware):
         ingest: IngestService,
         analyze: AnalyzeService,
         max_query_svc: MaxQueryService,
+        predict_svc: PredictService,
         technique_svc: TechniqueAnalysisService,
         yaml_config: YamlConfig,
         catalog: Catalog,
@@ -35,6 +37,7 @@ class DIMiddleware(BaseMiddleware):
         self._ingest = ingest
         self._analyze = analyze
         self._max_query_svc = max_query_svc
+        self._predict_svc = predict_svc
         self._technique_svc = technique_svc
         self._yaml_config = yaml_config
         self._catalog = catalog
@@ -49,6 +52,7 @@ class DIMiddleware(BaseMiddleware):
         data["ingest"] = self._ingest
         data["analyze"] = self._analyze
         data["max_query_svc"] = self._max_query_svc
+        data["predict"] = self._predict_svc
         data["technique_svc"] = self._technique_svc
         data["yaml_config"] = self._yaml_config
         data["catalog"] = self._catalog

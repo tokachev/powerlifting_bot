@@ -151,10 +151,11 @@ async def test_next_meet_upsert(client, user_id):
 
 
 async def test_create_recovery_and_niggle(client, user_id):
+    recorded_date = datetime.now(UTC).date().isoformat()
     r = await client.post(
         f"/api/pl/recovery?user_id={user_id}",
         json={
-            "recorded_date": "2026-04-18",
+            "recorded_date": recorded_date,
             "sleep_hours": 7.5,
             "hrv_ms": 55,
             "rhr_bpm": 48,
@@ -166,7 +167,7 @@ async def test_create_recovery_and_niggle(client, user_id):
     r2 = await client.post(
         f"/api/pl/niggles?user_id={user_id}",
         json={
-            "recorded_date": "2026-04-18",
+            "recorded_date": recorded_date,
             "body_area": "low_back",
             "severity": "warn",
             "note": "tight after deadlift",
