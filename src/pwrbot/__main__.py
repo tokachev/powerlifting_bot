@@ -19,6 +19,7 @@ from pwrbot.parsing.pipeline import ParsingPipeline
 from pwrbot.services.analyze import AnalyzeService
 from pwrbot.services.ingest import IngestService
 from pwrbot.services.max_query import MaxQueryService
+from pwrbot.services.predict import PredictService
 from pwrbot.services.technique import TechniqueAnalysisService
 
 
@@ -85,6 +86,10 @@ async def _main_async() -> None:
         pipeline=pipeline, analyzer=analyze_svc, catalog=catalog, cfg=yaml_cfg
     )
     max_query_svc = MaxQueryService(catalog=catalog, cfg=yaml_cfg)
+    predict_svc = PredictService(
+        codex=codex,
+        timeout_s=yaml_cfg.llm.codex.timeout_s,
+    )
     technique_svc = TechniqueAnalysisService(
         ollama=ollama,
         prompts=prompts,
@@ -101,6 +106,7 @@ async def _main_async() -> None:
         ingest=ingest_svc,
         analyze=analyze_svc,
         max_query_svc=max_query_svc,
+        predict_svc=predict_svc,
         technique_svc=technique_svc,
         yaml_config=yaml_cfg,
         catalog=catalog,

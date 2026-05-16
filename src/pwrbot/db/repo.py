@@ -270,6 +270,34 @@ async def workout_exists(
     return row is not None
 
 
+async def list_recent_workouts(
+    conn: aiosqlite.Connection, *, user_id: int, limit: int
+) -> list[WorkoutRow]:
+    """Return the most recent workouts, hydrated and ordered oldest → newest."""
+    if limit <= 0:
+        return []
+    selected: list[tuple[int, int]] = []
+    async with conn.execute(
+        "SELECT id, performed_at FROM workouts WHERE user_id = ? "
+        "ORDER BY performed_at DESC, id DESC LIMIT ?",
+        (user_id, limit),
+    ) as cur:
+        async for row in cur:
+            selected.append((int(row["id"]), int(row["performed_at"])))
+    if not selected:
+        return []
+    ids = [workout_id for workout_id, _ in selected]
+    performed_at_values = [performed_at for _, performed_at in selected]
+    workouts = await get_workouts_in_window(
+        conn,
+        user_id=user_id,
+        since_ts=min(performed_at_values),
+        until_ts=max(performed_at_values),
+    )
+    wanted = set(ids)
+    return [w for w in workouts if w.id in wanted]
+
+
 async def get_last_workout(
     conn: aiosqlite.Connection, user_id: int
 ) -> WorkoutRow | None:

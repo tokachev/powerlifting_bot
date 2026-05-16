@@ -12,6 +12,7 @@ from pwrbot.bot.handlers import clarify as h_clarify
 from pwrbot.bot.handlers import edit as h_edit
 from pwrbot.bot.handlers import log as h_log
 from pwrbot.bot.handlers import max_query as h_max_query
+from pwrbot.bot.handlers import predict as h_predict
 from pwrbot.bot.handlers import stats as h_stats
 from pwrbot.bot.handlers import video as h_video
 from pwrbot.bot.handlers import view as h_view
@@ -22,6 +23,7 @@ from pwrbot.domain.catalog import Catalog
 from pwrbot.services.analyze import AnalyzeService
 from pwrbot.services.ingest import IngestService
 from pwrbot.services.max_query import MaxQueryService
+from pwrbot.services.predict import PredictService
 from pwrbot.services.technique import TechniqueAnalysisService
 
 
@@ -31,6 +33,7 @@ def build_dispatcher(
     ingest: IngestService,
     analyze: AnalyzeService,
     max_query_svc: MaxQueryService,
+    predict_svc: PredictService,
     technique_svc: TechniqueAnalysisService,
     yaml_config: YamlConfig,
     catalog: Catalog,
@@ -38,7 +41,8 @@ def build_dispatcher(
     dp = Dispatcher(storage=MemoryStorage())
     di = DIMiddleware(
         conn=conn, ingest=ingest, analyze=analyze, max_query_svc=max_query_svc,
-        technique_svc=technique_svc, yaml_config=yaml_config, catalog=catalog,
+        predict_svc=predict_svc, technique_svc=technique_svc,
+        yaml_config=yaml_config, catalog=catalog,
     )
     dp.message.middleware(di)
     dp.callback_query.middleware(di)
@@ -48,6 +52,7 @@ def build_dispatcher(
     dp.include_router(h_analyze.router)
     dp.include_router(h_edit.router)
     dp.include_router(h_stats.router)        # /1rm, /stats, /prs, /volume commands
+    dp.include_router(h_predict.router)      # /predict next workout plan
     dp.include_router(h_clarify.router)     # FSM state guard — must come before log
     dp.include_router(h_weight.router)      # body weight input — must come before log
     dp.include_router(h_max_query.router)   # max question — must come before log
