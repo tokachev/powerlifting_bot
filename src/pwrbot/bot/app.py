@@ -8,6 +8,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from pwrbot.bot.handlers import analyze as h_analyze
 from pwrbot.bot.handlers import basic as h_basic
+from pwrbot.bot.handlers import charts as h_charts
 from pwrbot.bot.handlers import clarify as h_clarify
 from pwrbot.bot.handlers import edit as h_edit
 from pwrbot.bot.handlers import log as h_log
@@ -21,6 +22,7 @@ from pwrbot.bot.middleware import DIMiddleware, TelegramAllowlistMiddleware
 from pwrbot.config import YamlConfig
 from pwrbot.domain.catalog import Catalog
 from pwrbot.services.analyze import AnalyzeService
+from pwrbot.services.chart_images import ChartImageService
 from pwrbot.services.ingest import IngestService
 from pwrbot.services.max_query import MaxQueryService
 from pwrbot.services.predict import PredictService
@@ -34,6 +36,7 @@ def build_dispatcher(
     analyze: AnalyzeService,
     max_query_svc: MaxQueryService,
     predict_svc: PredictService,
+    chart_images: ChartImageService,
     technique_svc: TechniqueAnalysisService,
     yaml_config: YamlConfig,
     catalog: Catalog,
@@ -45,7 +48,7 @@ def build_dispatcher(
     )
     di = DIMiddleware(
         conn=conn, ingest=ingest, analyze=analyze, max_query_svc=max_query_svc,
-        predict_svc=predict_svc, technique_svc=technique_svc,
+        predict_svc=predict_svc, chart_images=chart_images, technique_svc=technique_svc,
         yaml_config=yaml_config, catalog=catalog,
     )
     dp.message.middleware(access)
@@ -59,6 +62,7 @@ def build_dispatcher(
     dp.include_router(h_edit.router)
     dp.include_router(h_stats.router)        # /1rm, /stats, /prs, /volume commands
     dp.include_router(h_predict.router)      # /predict next workout plan
+    dp.include_router(h_charts.router)       # /charts, /chart dashboard screenshots
     dp.include_router(h_clarify.router)     # FSM state guard — must come before log
     dp.include_router(h_weight.router)      # body weight input — must come before log
     dp.include_router(h_max_query.router)   # max question — must come before log

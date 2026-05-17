@@ -49,6 +49,7 @@ services:
       CODEX_ENABLED: ${CODEX_ENABLED:-false}
       CODEX_WS_URL: ws://codex-app-server:4500
       CODEX_TOKEN_FILE: /run/secrets/codex-app-server-token
+      PWRBOT_DASHBOARD_INTERNAL_URL: http://pwrbot-dashboard:8000
 
     volumes:
       - ./data:/app/data

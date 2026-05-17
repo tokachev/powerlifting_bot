@@ -20,6 +20,7 @@ from pwrbot.services.analyze import (
     AnalyzeService,
     ExplainBackendResult,
 )
+from pwrbot.services.chart_images import ChartImageService
 from pwrbot.services.ingest import IngestService
 from pwrbot.services.max_query import MaxQueryService
 from pwrbot.services.predict import PredictService
@@ -49,6 +50,7 @@ async def test_dispatcher_builds_with_all_routers(conn, yaml_config) -> None:
 
     max_query_svc = MaxQueryService(catalog=catalog, cfg=yaml_config)
     predict_svc = PredictService(codex=None, timeout_s=12.0)
+    chart_images = ChartImageService(base_url="http://127.0.0.1:8000")
 
     from unittest.mock import MagicMock
 
@@ -60,13 +62,15 @@ async def test_dispatcher_builds_with_all_routers(conn, yaml_config) -> None:
         analyze=analyzer,
         max_query_svc=max_query_svc,
         predict_svc=predict_svc,
+        chart_images=chart_images,
         technique_svc=technique_svc,
         yaml_config=yaml_config,
         catalog=catalog,
     )
 
-    # 11 routers expected: basic, view, analyze, edit, stats, predict, clarify, weight, max_query, video, log
-    assert len(dp.sub_routers) == 11
+    # 12 routers expected: basic, view, analyze, edit, stats, predict, charts,
+    # clarify, weight, max_query, video, log
+    assert len(dp.sub_routers) == 12
 
 
 def test_format_parsed_workout_basic() -> None:

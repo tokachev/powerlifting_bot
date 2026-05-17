@@ -12,6 +12,7 @@ from aiogram.types import CallbackQuery, Message, TelegramObject
 from pwrbot.config import YamlConfig
 from pwrbot.domain.catalog import Catalog
 from pwrbot.services.analyze import AnalyzeService
+from pwrbot.services.chart_images import ChartImageService
 from pwrbot.services.ingest import IngestService
 from pwrbot.services.max_query import MaxQueryService
 from pwrbot.services.predict import PredictService
@@ -58,6 +59,7 @@ class DIMiddleware(BaseMiddleware):
         analyze: AnalyzeService,
         max_query_svc: MaxQueryService,
         predict_svc: PredictService,
+        chart_images: ChartImageService,
         technique_svc: TechniqueAnalysisService,
         yaml_config: YamlConfig,
         catalog: Catalog,
@@ -67,6 +69,7 @@ class DIMiddleware(BaseMiddleware):
         self._analyze = analyze
         self._max_query_svc = max_query_svc
         self._predict_svc = predict_svc
+        self._chart_images = chart_images
         self._technique_svc = technique_svc
         self._yaml_config = yaml_config
         self._catalog = catalog
@@ -82,6 +85,7 @@ class DIMiddleware(BaseMiddleware):
         data["analyze"] = self._analyze
         data["max_query_svc"] = self._max_query_svc
         data["predict"] = self._predict_svc
+        data["chart_images"] = self._chart_images
         data["technique_svc"] = self._technique_svc
         data["yaml_config"] = self._yaml_config
         data["catalog"] = self._catalog

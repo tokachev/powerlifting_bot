@@ -4,6 +4,7 @@ import { AppShell } from './components/layout/AppShell'
 import PlDashboardPage from './pages/PlDashboard'
 import PlLiftDetailPage from './pages/PlLiftDetail'
 import PlHistoryPage from './pages/PlHistory'
+import ChartExportPage from './pages/ChartExport'
 import LegacyDashboard from './pages/Dashboard'
 import './i18n'
 
@@ -13,6 +14,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/legacy" element={<LegacyDashboard />} />
+          <Route path="/export/chart/:chartId" element={<ChartExportPage />} />
           <Route element={<AppShell />}>
             <Route path="/" element={<PlDashboardPage />} />
             <Route path="/lifts/:lift" element={<PlLiftDetailPage />} />
