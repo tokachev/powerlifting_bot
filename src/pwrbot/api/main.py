@@ -48,7 +48,7 @@ from pwrbot.api.schemas import (
     WeeklySetsBucketSchema,
     WeeklySetsResponse,
 )
-from pwrbot.config import YamlConfig, load_yaml_config, parse_telegram_ids
+from pwrbot.config import YamlConfig, load_settings
 from pwrbot.db import repo
 from pwrbot.domain.catalog import (
     VALID_MUSCLE_GROUPS,
@@ -695,27 +695,21 @@ def create_app(
 
 
 def build_production_app() -> FastAPI:
-    """Entrypoint used by `python -m pwrbot.api`. Reads paths from env vars."""
-    _, exercises_path = _settings_paths()
-    config_path = Path(os.environ.get("PWRBOT_CONFIG_PATH", "./config/settings.yaml"))
-    catalog = load_catalog(exercises_path)
-    yaml_config = load_yaml_config(config_path)
-    username = os.environ.get("PWRBOT_DASHBOARD_USERNAME")
-    password = os.environ.get("PWRBOT_DASHBOARD_PASSWORD")
+    """Entrypoint used by `python -m pwrbot.api`. Loads `.env` via Settings."""
+    settings, yaml_config = load_settings()
+    catalog = load_catalog(settings.exercises_path)
+    username = settings.dashboard_username
+    password = settings.dashboard_password
     if not username or not password:
         raise RuntimeError(
             "PWRBOT_DASHBOARD_USERNAME and PWRBOT_DASHBOARD_PASSWORD must be set"
         )
-    auth = (username, password)
-    allowed_telegram_ids = parse_telegram_ids(
-        os.environ.get("PWRBOT_ALLOWED_TELEGRAM_IDS")
-    )
-    if not allowed_telegram_ids:
+    if not settings.allowed_telegram_ids:
         raise RuntimeError("PWRBOT_ALLOWED_TELEGRAM_IDS must be set for access control")
     return create_app(
         catalog,
         yaml_config=yaml_config,
         lifespan=True,
-        dashboard_auth=auth,
-        allowed_telegram_ids=allowed_telegram_ids,
+        dashboard_auth=(username, password),
+        allowed_telegram_ids=settings.allowed_telegram_ids,
     )

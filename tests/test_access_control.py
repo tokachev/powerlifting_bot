@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 import pytest
 from httpx import ASGITransport, AsyncClient, BasicAuth
 
-from pwrbot.api.main import create_app
+from pwrbot.api.main import build_production_app, create_app
 from pwrbot.bot.middleware import TelegramAllowlistMiddleware
 from pwrbot.db import repo
 from pwrbot.domain.catalog import load_catalog
@@ -26,6 +26,41 @@ async def authed_client(conn):
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as ac:
         yield ac
+
+
+async def test_production_app_loads_dashboard_security_from_dotenv(
+    conn, monkeypatch, tmp_path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env").write_text(
+        "\n".join(
+            [
+                "TELEGRAM_TOKEN=123:abc",
+                "PWRBOT_ALLOWED_TELEGRAM_IDS=417753103",
+                "PWRBOT_DASHBOARD_USERNAME=dotenv-user",
+                "PWRBOT_DASHBOARD_PASSWORD=dotenv-pass",
+                f"CONFIG_PATH={REPO_ROOT / 'config' / 'settings.yaml'}",
+                f"EXERCISES_PATH={REPO_ROOT / 'config' / 'exercises.yaml'}",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    app = build_production_app()
+    app.state.conn = conn
+    await repo.get_or_create_user(conn, telegram_id=417753103, display_name="Artem")
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as ac:
+        unauthenticated = await ac.get("/api/users")
+        authenticated = await ac.get(
+            "/api/users", auth=BasicAuth("dotenv-user", "dotenv-pass")
+        )
+
+    assert unauthenticated.status_code == 401
+    assert authenticated.status_code == 200
+    assert authenticated.json() == [
+        {"id": 1, "telegram_id": None, "display_name": "Artem"}
+    ]
 
 
 async def test_api_requires_basic_auth(authed_client) -> None:
