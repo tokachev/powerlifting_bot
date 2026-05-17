@@ -17,6 +17,7 @@ from pwrbot.logging_setup import configure_logging, get_logger
 from pwrbot.parsing.llm_parser import LLMParser
 from pwrbot.parsing.pipeline import ParsingPipeline
 from pwrbot.services.analyze import AnalyzeService
+from pwrbot.services.chart_images import ChartImageService
 from pwrbot.services.ingest import IngestService
 from pwrbot.services.max_query import MaxQueryService
 from pwrbot.services.predict import PredictService
@@ -93,6 +94,7 @@ async def _main_async() -> None:
         codex=codex,
         timeout_s=yaml_cfg.llm.codex.timeout_s,
     )
+    chart_images = ChartImageService()
     technique_svc = TechniqueAnalysisService(
         ollama=ollama,
         prompts=prompts,
@@ -110,6 +112,7 @@ async def _main_async() -> None:
         analyze=analyze_svc,
         max_query_svc=max_query_svc,
         predict_svc=predict_svc,
+        chart_images=chart_images,
         technique_svc=technique_svc,
         yaml_config=yaml_cfg,
         catalog=catalog,

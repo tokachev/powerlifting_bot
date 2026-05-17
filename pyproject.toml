@@ -20,6 +20,7 @@ dependencies = [
     "opencv-python-headless>=4.9.0",
     "mediapipe>=0.10.14",
     "websockets>=14",
+    "playwright>=1.49.0",
 ]
 
 [project.optional-dependencies]

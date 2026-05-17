@@ -4,6 +4,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
     MPLCONFIGDIR=/tmp/matplotlib
 
 # System libs for OpenCV / MediaPipe (mediapipe pulls opencv-contrib which needs libGL)
@@ -23,8 +24,9 @@ COPY config/ ./config/
 COPY prompts/ ./prompts/
 
 RUN pip install --no-cache-dir -e . \
+    && python -m playwright install --with-deps chromium \
     && mkdir -p /app/data \
-    && chown -R pwrbot:pwrbot /app
+    && chown -R pwrbot:pwrbot /app /ms-playwright
 
 USER pwrbot
 

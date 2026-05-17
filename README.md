@@ -25,6 +25,7 @@ ollama serve &  # или запусти Ollama.app
 python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -e '.[dev]'
+python -m playwright install chromium  # для отправки dashboard-графиков картинкой в Telegram
 
 # 3. Конфиг
 cp .env.example .env
@@ -83,6 +84,8 @@ docker compose exec pwrbot python -c \
 | `/lastworkout` | Последняя тренировка |
 | `/week` | Сводка за 7 дней |
 | `/analyze [7\|28]` | Полный анализ за окно (по умолчанию 7) |
+| `/charts` | Список dashboard-графиков, доступных как PNG |
+| `/chart <id> [lift] [weeks]` | Прислать график картинкой в Telegram |
 | `/delete_last` | Удалить последнюю тренировку |
 | `/edit_last <текст>` | Заменить последнюю тренировку |
 
@@ -111,7 +114,9 @@ docker compose exec pwrbot python -c \
 2. Отправь `присед 5x5x100` — вернёт распарсенную сводку + 7-дневный мини-анализ.
 3. `/lastworkout` — покажет только что записанную тренировку.
 4. `/analyze 28` — полный анализ за 28 дней.
-5. `/delete_last` — удалит последнюю тренировку.
+5. `/charts` — покажет доступные графики.
+6. `/chart overview-tonnage 14` — пришлёт PNG-график из dashboard.
+7. `/delete_last` — удалит последнюю тренировку.
 
 ## Структура
 
