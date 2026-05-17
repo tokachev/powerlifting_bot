@@ -2,7 +2,7 @@
 
 export interface UserInfo {
   id: number
-  telegram_id: number
+  telegram_id: number | null
   display_name: string | null
 }
 

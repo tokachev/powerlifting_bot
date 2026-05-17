@@ -119,6 +119,23 @@ class Settings(BaseSettings):
     codex_enabled: bool = Field(False, alias="CODEX_ENABLED")
     codex_model: str | None = Field(None, alias="CODEX_MODEL")
     gemma_analysis_enabled: bool = Field(True, alias="GEMMA_ANALYSIS_ENABLED")
+    allowed_telegram_ids_raw: str = Field("", alias="PWRBOT_ALLOWED_TELEGRAM_IDS")
+    dashboard_username: str | None = Field(None, alias="PWRBOT_DASHBOARD_USERNAME")
+    dashboard_password: str | None = Field(None, alias="PWRBOT_DASHBOARD_PASSWORD")
+
+    @property
+    def allowed_telegram_ids(self) -> set[int]:
+        return parse_telegram_ids(self.allowed_telegram_ids_raw)
+
+
+def parse_telegram_ids(raw: str | None) -> set[int]:
+    """Parse a comma/space separated Telegram ID allowlist from env."""
+    if not raw:
+        return set()
+    values: set[int] = set()
+    for part in raw.replace(",", " ").split():
+        values.add(int(part))
+    return values
 
 
 def load_yaml_config(path: Path) -> YamlConfig:

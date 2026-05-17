@@ -28,7 +28,7 @@ pip install -e '.[dev]'
 
 # 3. Конфиг
 cp .env.example .env
-# Заполни TELEGRAM_TOKEN
+# Заполни TELEGRAM_TOKEN, PWRBOT_ALLOWED_TELEGRAM_IDS и dashboard Basic Auth
 
 # 4. БД
 python scripts/init_db.py
@@ -53,7 +53,7 @@ python -m pwrbot
 
 ```bash
 cp .env.example .env
-# Заполни TELEGRAM_TOKEN
+# Заполни TELEGRAM_TOKEN, PWRBOT_ALLOWED_TELEGRAM_IDS и dashboard Basic Auth
 mkdir -p data
 docker compose up -d --build
 docker compose logs -f pwrbot

@@ -35,7 +35,7 @@ services:
     container_name: pwrbot
     restart: unless-stopped
 
-    # TELEGRAM_TOKEN and any other overrides come from .env
+    # TELEGRAM_TOKEN, PWRBOT_ALLOWED_TELEGRAM_IDS, and any other overrides come from .env
     env_file: .env
 
     # These override whatever .env says — they must match the container's layout,
@@ -71,6 +71,8 @@ services:
     image: pwrbot-dashboard:local
     container_name: pwrbot-dashboard
     restart: unless-stopped
+
+    env_file: .env
 
     environment:
       PWRBOT_DB_PATH: /app/data/pwrbot.db

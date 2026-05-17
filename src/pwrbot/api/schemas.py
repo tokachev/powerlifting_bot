@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 class UserInfo(BaseModel):
     id: int
-    telegram_id: int
+    telegram_id: int | None = None
     display_name: str | None
 
 
