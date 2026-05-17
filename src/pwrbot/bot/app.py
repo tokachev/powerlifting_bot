@@ -17,7 +17,7 @@ from pwrbot.bot.handlers import stats as h_stats
 from pwrbot.bot.handlers import video as h_video
 from pwrbot.bot.handlers import view as h_view
 from pwrbot.bot.handlers import weight as h_weight
-from pwrbot.bot.middleware import DIMiddleware
+from pwrbot.bot.middleware import DIMiddleware, TelegramAllowlistMiddleware
 from pwrbot.config import YamlConfig
 from pwrbot.domain.catalog import Catalog
 from pwrbot.services.analyze import AnalyzeService
@@ -37,13 +37,19 @@ def build_dispatcher(
     technique_svc: TechniqueAnalysisService,
     yaml_config: YamlConfig,
     catalog: Catalog,
+    allowed_telegram_ids: set[int] | None = None,
 ) -> Dispatcher:
     dp = Dispatcher(storage=MemoryStorage())
+    access = TelegramAllowlistMiddleware(
+        allowed_telegram_ids=allowed_telegram_ids or set()
+    )
     di = DIMiddleware(
         conn=conn, ingest=ingest, analyze=analyze, max_query_svc=max_query_svc,
         predict_svc=predict_svc, technique_svc=technique_svc,
         yaml_config=yaml_config, catalog=catalog,
     )
+    dp.message.middleware(access)
+    dp.callback_query.middleware(access)
     dp.message.middleware(di)
     dp.callback_query.middleware(di)
 

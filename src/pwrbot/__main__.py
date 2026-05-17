@@ -57,6 +57,9 @@ async def _main_async() -> None:
         gemma_analysis_enabled=settings.gemma_analysis_enabled,
     )
 
+    if not settings.allowed_telegram_ids:
+        raise RuntimeError("PWRBOT_ALLOWED_TELEGRAM_IDS must be set for access control")
+
     conn = await open_and_bootstrap(settings.db_path)
     catalog = load_catalog(settings.exercises_path)
     prompts = PromptLoader(settings.prompts_dir)
@@ -110,6 +113,7 @@ async def _main_async() -> None:
         technique_svc=technique_svc,
         yaml_config=yaml_cfg,
         catalog=catalog,
+        allowed_telegram_ids=settings.allowed_telegram_ids,
     )
 
     try:

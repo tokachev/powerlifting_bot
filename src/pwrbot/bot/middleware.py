@@ -7,7 +7,7 @@ from typing import Any
 
 import aiosqlite
 from aiogram import BaseMiddleware
-from aiogram.types import TelegramObject
+from aiogram.types import CallbackQuery, Message, TelegramObject
 
 from pwrbot.config import YamlConfig
 from pwrbot.domain.catalog import Catalog
@@ -16,6 +16,35 @@ from pwrbot.services.ingest import IngestService
 from pwrbot.services.max_query import MaxQueryService
 from pwrbot.services.predict import PredictService
 from pwrbot.services.technique import TechniqueAnalysisService
+
+
+class TelegramAllowlistMiddleware(BaseMiddleware):
+    """Stops all Telegram events from users outside the configured allowlist."""
+
+    def __init__(self, *, allowed_telegram_ids: set[int]) -> None:
+        self._allowed_telegram_ids = allowed_telegram_ids
+
+    async def __call__(
+        self,
+        handler: Callable[[TelegramObject, dict[str, Any]], Awaitable[Any]],
+        event: TelegramObject,
+        data: dict[str, Any],
+    ) -> Any:
+        if not self._allowed_telegram_ids:
+            return await handler(event, data)
+
+        from_user = getattr(event, "from_user", None)
+        if from_user is None and isinstance(event, CallbackQuery):
+            from_user = event.from_user
+        user_id = getattr(from_user, "id", None)
+        if user_id in self._allowed_telegram_ids:
+            return await handler(event, data)
+
+        if isinstance(event, CallbackQuery):
+            await event.answer("Доступ закрыт.", show_alert=True)
+        elif isinstance(event, Message) or hasattr(event, "answer"):
+            await event.answer("Доступ к этому боту закрыт.")
+        return None
 
 
 class DIMiddleware(BaseMiddleware):

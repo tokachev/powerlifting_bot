@@ -89,7 +89,7 @@ async def test_users_endpoint(client, conn) -> None:
     assert r.status_code == 200
     users = r.json()
     assert len(users) == 1
-    assert users[0]["telegram_id"] == 42
+    assert users[0]["telegram_id"] is None
     assert users[0]["display_name"] == "alice"
 
 

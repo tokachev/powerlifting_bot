@@ -44,7 +44,7 @@ export function Sidebar({ value, onChange }: Props) {
           <option value="">— select user —</option>
           {users?.map((u) => (
             <option key={u.id} value={u.id}>
-              {u.display_name ?? `tg:${u.telegram_id}`} (#{u.id})
+              {u.display_name ?? (u.telegram_id ? `tg:${u.telegram_id}` : `User #${u.id}`)} (#{u.id})
             </option>
           ))}
         </select>

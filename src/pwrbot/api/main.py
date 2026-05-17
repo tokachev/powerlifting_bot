@@ -7,7 +7,10 @@ Tests assign a test connection directly. Production wires it through `_lifespan`
 
 from __future__ import annotations
 
+import base64
+import binascii
 import os
+import secrets
 from contextlib import asynccontextmanager
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -15,8 +18,8 @@ from typing import Annotated
 
 import aiosqlite
 from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from pwrbot.api.routes_powerlifting import router as pl_router
@@ -45,9 +48,8 @@ from pwrbot.api.schemas import (
     WeeklySetsBucketSchema,
     WeeklySetsResponse,
 )
-from pwrbot.config import YamlConfig, load_yaml_config
+from pwrbot.config import YamlConfig, load_settings
 from pwrbot.db import repo
-from pwrbot.db.connection import bootstrap
 from pwrbot.domain.catalog import (
     VALID_MUSCLE_GROUPS,
     Catalog,
@@ -83,6 +85,43 @@ def _settings_paths() -> tuple[Path, Path]:
     return db_path, exercises_path
 
 
+def _basic_auth_response() -> Response:
+    return JSONResponse(
+        {"detail": "Authentication required"},
+        status_code=401,
+        headers={"WWW-Authenticate": "Basic"},
+    )
+
+
+def _valid_basic_auth(header: str | None, username: str, password: str) -> bool:
+    if not header or not header.startswith("Basic "):
+        return False
+    try:
+        decoded = base64.b64decode(
+            header.removeprefix("Basic "), validate=True
+        ).decode("utf-8")
+        provided_user, provided_password = decoded.split(":", 1)
+    except (binascii.Error, ValueError, UnicodeDecodeError):
+        return False
+    return secrets.compare_digest(provided_user, username) and secrets.compare_digest(
+        provided_password, password
+    )
+
+
+async def _is_allowed_user_id(
+    conn: aiosqlite.Connection, user_id: int, allowed_telegram_ids: set[int]
+) -> bool:
+    if not allowed_telegram_ids:
+        return True
+    async with conn.execute(
+        "SELECT telegram_id FROM users WHERE id = ?", (user_id,)
+    ) as cur:
+        row = await cur.fetchone()
+    if row is None:
+        return False
+    return int(row["telegram_id"]) in allowed_telegram_ids
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     db_path, _ = _settings_paths()
@@ -107,6 +146,8 @@ def create_app(
     *,
     yaml_config: YamlConfig | None = None,
     lifespan: bool = False,
+    dashboard_auth: tuple[str, str] | None = None,
+    allowed_telegram_ids: set[int] | None = None,
 ) -> FastAPI:
     """Build the dashboard FastAPI app.
 
@@ -124,6 +165,35 @@ def create_app(
     )
     app.state.catalog = catalog
     app.state.yaml_config = yaml_config
+    app.state.dashboard_auth = dashboard_auth
+    app.state.allowed_telegram_ids = allowed_telegram_ids or set()
+
+    @app.middleware("http")
+    async def access_control(request: Request, call_next):
+        if request.url.path == "/health":
+            return await call_next(request)
+
+        auth = request.app.state.dashboard_auth
+        if auth is not None:
+            username, password = auth
+            if not _valid_basic_auth(
+                request.headers.get("authorization"), username, password
+            ):
+                return _basic_auth_response()
+
+        user_id_raw = request.query_params.get("user_id")
+        if user_id_raw is not None and hasattr(request.app.state, "conn"):
+            try:
+                user_id = int(user_id_raw)
+            except ValueError:
+                return await call_next(request)
+            allowed = await _is_allowed_user_id(
+                request.app.state.conn, user_id, request.app.state.allowed_telegram_ids
+            )
+            if not allowed:
+                return JSONResponse({"detail": "Forbidden"}, status_code=403)
+
+        return await call_next(request)
 
     app.add_middleware(
         CORSMiddleware,
@@ -141,14 +211,20 @@ def create_app(
     @app.get("/api/users", response_model=list[UserInfo])
     async def list_users(request: Request) -> list[UserInfo]:
         c: aiosqlite.Connection = request.app.state.conn
-        async with c.execute(
-            "SELECT id, telegram_id, display_name FROM users ORDER BY id ASC"
-        ) as cur:
+        query = "SELECT id, telegram_id, display_name FROM users"
+        params: tuple[object, ...] = ()
+        allowed_ids: set[int] = request.app.state.allowed_telegram_ids
+        if allowed_ids:
+            placeholders = ",".join("?" for _ in allowed_ids)
+            query += f" WHERE telegram_id IN ({placeholders})"
+            params = tuple(sorted(allowed_ids))
+        query += " ORDER BY id ASC"
+        async with c.execute(query, params) as cur:
             rows = await cur.fetchall()
         return [
             UserInfo(
                 id=int(r["id"]),
-                telegram_id=int(r["telegram_id"]),
+                telegram_id=None,
                 display_name=r["display_name"],
             )
             for r in rows
@@ -619,9 +695,21 @@ def create_app(
 
 
 def build_production_app() -> FastAPI:
-    """Entrypoint used by `python -m pwrbot.api`. Reads paths from env vars."""
-    _, exercises_path = _settings_paths()
-    config_path = Path(os.environ.get("PWRBOT_CONFIG_PATH", "./config/settings.yaml"))
-    catalog = load_catalog(exercises_path)
-    yaml_config = load_yaml_config(config_path)
-    return create_app(catalog, yaml_config=yaml_config, lifespan=True)
+    """Entrypoint used by `python -m pwrbot.api`. Loads `.env` via Settings."""
+    settings, yaml_config = load_settings()
+    catalog = load_catalog(settings.exercises_path)
+    username = settings.dashboard_username
+    password = settings.dashboard_password
+    if not username or not password:
+        raise RuntimeError(
+            "PWRBOT_DASHBOARD_USERNAME and PWRBOT_DASHBOARD_PASSWORD must be set"
+        )
+    if not settings.allowed_telegram_ids:
+        raise RuntimeError("PWRBOT_ALLOWED_TELEGRAM_IDS must be set for access control")
+    return create_app(
+        catalog,
+        yaml_config=yaml_config,
+        lifespan=True,
+        dashboard_auth=(username, password),
+        allowed_telegram_ids=settings.allowed_telegram_ids,
+    )
