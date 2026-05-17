@@ -142,7 +142,7 @@ class ChartImageService:
                 )
                 page = await context.new_page()
                 await page.goto(url, wait_until="networkidle", timeout=self._timeout_ms)
-                locator = page.locator('[data-chart-export]').first()
+                locator = page.locator('[data-chart-export]').first
                 await locator.wait_for(state="visible", timeout=self._timeout_ms)
                 status = await locator.get_attribute("data-chart-export")
                 if status != "ready":
