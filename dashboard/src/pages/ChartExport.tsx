@@ -60,13 +60,14 @@ function ExportFrame({
       data-chart-export={status}
       style={{
         width: 1040,
-        minHeight: 520,
         padding: 24,
         background: 'var(--bg)',
         color: 'var(--fg)',
       }}
     >
-      {children}
+      <div data-chart-export-content style={{ width: '100%' }}>
+        {children}
+      </div>
     </div>
   )
 }
