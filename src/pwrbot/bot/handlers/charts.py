@@ -16,6 +16,12 @@ from pwrbot.services.chart_images import (
 
 router = Router()
 
+_CHART_ALIASES = {
+    "bodyweight": "bodyweight-trend",
+    "bw": "bodyweight-trend",
+    "вес": "bodyweight-trend",
+}
+
 _LIFT_ALIASES = {
     "squat": "squat",
     "присед": "squat",
@@ -49,7 +55,7 @@ def _parse_chart_request(text: str, *, user_id: int) -> ChartRenderRequest:
     parts = text.split()[1:]
     if not parts:
         raise ValueError(_charts_help())
-    chart_id = parts[0]
+    chart_id = _CHART_ALIASES.get(parts[0].lower(), parts[0])
     definition = get_chart_definition(chart_id)
     lift: str | None = None
     weeks = 14

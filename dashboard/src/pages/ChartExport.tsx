@@ -4,6 +4,7 @@ import { useLiftDetail, useOverview } from '@/hooks/usePl'
 import type { Lift } from '@/api/pl_types'
 import { TonnageByLift } from '@/components/pl/dashboard/TonnageByLift'
 import { IntensityChart } from '@/components/pl/dashboard/IntensityChart'
+import { BodyweightTrend } from '@/components/pl/dashboard/BodyweightTrend'
 import {
   E1RMProgressionChart,
   LiftIntensityChart,
@@ -11,7 +12,7 @@ import {
 } from '@/components/pl/lift/LiftCharts'
 
 const VALID_LIFTS: Lift[] = ['squat', 'bench', 'deadlift']
-const OVERVIEW_CHARTS = new Set(['overview-tonnage', 'overview-intensity'])
+const OVERVIEW_CHARTS = new Set(['overview-tonnage', 'overview-intensity', 'bodyweight-trend'])
 const LIFT_CHARTS = new Set(['lift-e1rm', 'lift-tonnage', 'lift-intensity'])
 
 function asPositiveInt(value: string | null, fallback: number) {
@@ -87,11 +88,11 @@ function OverviewChartExport({
   const phaseWeeks = data.tonnage_by_lift.squat.map((p) => p.phase)
   return (
     <ExportFrame status="ready">
-      {chartId === 'overview-tonnage' ? (
+      {chartId === 'overview-tonnage' && (
         <TonnageByLift data={data.tonnage_by_lift} phases={phaseWeeks} />
-      ) : (
-        <IntensityChart data={data.intensity_by_lift} />
       )}
+      {chartId === 'overview-intensity' && <IntensityChart data={data.intensity_by_lift} />}
+      {chartId === 'bodyweight-trend' && <BodyweightTrend points={data.bodyweight_trend} />}
     </ExportFrame>
   )
 }

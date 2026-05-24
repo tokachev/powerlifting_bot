@@ -38,12 +38,25 @@ class FakeChartService:
         return b"\x89PNG\r\n\x1a\nfake"
 
 
-@pytest.mark.parametrize("chart_id", ["overview-tonnage", "overview-intensity", "lift-e1rm"])
+@pytest.mark.parametrize(
+    "chart_id",
+    ["overview-tonnage", "overview-intensity", "lift-e1rm", "bodyweight-trend"],
+)
 def test_known_chart_definitions_exist(chart_id: str) -> None:
     definition = get_chart_definition(chart_id)
 
     assert definition.id == chart_id
     assert definition.export_path.startswith("/export/chart/")
+
+
+def test_bodyweight_chart_builds_export_url_without_lift() -> None:
+    service = ChartImageService(base_url="http://127.0.0.1:8000")
+
+    url = service.build_export_url(
+        ChartRenderRequest(chart_id="bodyweight-trend", user_id=7, weeks=12)
+    )
+
+    assert url == "http://127.0.0.1:8000/export/chart/bodyweight-trend?user_id=7&weeks=12"
 
 
 def test_chart_service_rejects_unknown_chart_ids() -> None:
@@ -99,6 +112,21 @@ async def test_chart_command_renders_photo_for_existing_telegram_user(conn) -> N
     assert "lift-e1rm" in (message.photos[0][1] or "")
     assert chart_service.calls == [
         ChartRenderRequest(chart_id="lift-e1rm", user_id=user_id, weeks=12, lift="bench")
+    ]
+
+
+async def test_chart_command_renders_bodyweight_photo_with_short_alias(conn) -> None:
+    user_id = await repo.get_or_create_user(conn, telegram_id=42, display_name="Artem")
+    chart_service = FakeChartService(calls=[])
+    message = FakePhotoMessage("/chart bodyweight 12")
+
+    await cmd_chart(message, conn=conn, chart_images=chart_service)  # type: ignore[arg-type]
+
+    assert not message.answers
+    assert len(message.photos) == 1
+    assert "bodyweight-trend" in (message.photos[0][1] or "")
+    assert chart_service.calls == [
+        ChartRenderRequest(chart_id="bodyweight-trend", user_id=user_id, weeks=12)
     ]
 
 
