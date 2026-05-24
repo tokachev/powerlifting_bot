@@ -259,6 +259,11 @@ def _build_r_na_w(
 
 
 _MAX_BW_SETS = 20  # bodyweight set count cap for N*R fallback pattern
+_MAX_DUMBBELL_N_STAR_R_SETS = 6  # above this, dumbbell N*R likely means weight×reps
+
+
+def _n_star_r_looks_like_dumbbell_weight_reps(first: float) -> bool:
+    return not first.is_integer() or first > _MAX_DUMBBELL_N_STAR_R_SETS
 
 
 def _build_n_star_r(
@@ -301,8 +306,23 @@ def _sets_in_range(sets: list[ParsedSet]) -> bool:
     return all(1 <= s.reps <= 100 and 0 <= s.weight_kg <= 500 for s in sets)
 
 
+def _prefer_weight_reps_for_n_star_r(raw_name: str) -> bool:
+    """Whether bare `NхR` likely means weight × reps, not sets × reps.
+
+    Dumbbell blocks are commonly logged as per-hand weight × reps (`9х15`).
+    Treating the first slot as set count silently creates many zero-weight sets.
+    Users can still spell bodyweight/set-count notation as `N по R`.
+    """
+    lowered = raw_name.lower()
+    return "гантел" in lowered or "dumbbell" in lowered
+
+
 def _match_setgroup_at_start(
-    text: str, pos: int, rpe: float | None, is_warmup: bool
+    text: str,
+    pos: int,
+    rpe: float | None,
+    is_warmup: bool,
+    prefer_weight_reps_for_n_star_r: bool = False,
 ) -> tuple[list[ParsedSet], int] | None:
     """Try each pattern anchored at `pos` in order; return the first match.
 
@@ -314,7 +334,19 @@ def _match_setgroup_at_start(
         m = pattern.match(text, pos)
         if m is None:
             continue
-        sets = builder(m, rpe, is_warmup)
+        if pattern is RE_N_STAR_R and prefer_weight_reps_for_n_star_r:
+            first = _to_float(m.group("sets"))
+            if _n_star_r_looks_like_dumbbell_weight_reps(first):
+                reps = int(m.group("reps"))
+                sets = [
+                    ParsedSet(
+                        reps=reps, weight_kg=first, rpe=rpe, is_warmup=is_warmup
+                    )
+                ]
+            else:
+                sets = builder(m, rpe, is_warmup)
+        else:
+            sets = builder(m, rpe, is_warmup)
         if not sets:
             continue
         if not _sets_in_range(sets):
@@ -324,7 +356,10 @@ def _match_setgroup_at_start(
 
 
 def _parse_segment(
-    text: str, rpe_global: float | None, warmup_global: bool
+    text: str,
+    rpe_global: float | None,
+    warmup_global: bool,
+    prefer_weight_reps_for_n_star_r: bool = False,
 ) -> list[ParsedSet] | None:
     """Parse one numeric segment (e.g. `20/40/60*10` or `2 по 12 2 по 10`).
 
@@ -338,7 +373,13 @@ def _parse_segment(
     sets: list[ParsedSet] = []
     pos = _skip_seps(work, 0)
     while pos < len(work):
-        hit = _match_setgroup_at_start(work, pos, rpe_global, warmup_global)
+        hit = _match_setgroup_at_start(
+            work,
+            pos,
+            rpe_global,
+            warmup_global,
+            prefer_weight_reps_for_n_star_r=prefer_weight_reps_for_n_star_r,
+        )
         if hit is None:
             break
         new_sets, new_pos = hit
@@ -370,10 +411,17 @@ def parse_blocks(
         rpe_global = _parse_rpe(combined)
         warmup_global = bool(RE_WARMUP.search(combined))
 
+        prefer_weight_reps_for_n_star_r = _prefer_weight_reps_for_n_star_r(block.raw_name)
+
         all_sets: list[ParsedSet] = []
         block_ok = True
         for seg in block.numeric_segments:
-            parsed = _parse_segment(seg, rpe_global, warmup_global)
+            parsed = _parse_segment(
+                seg,
+                rpe_global,
+                warmup_global,
+                prefer_weight_reps_for_n_star_r=prefer_weight_reps_for_n_star_r,
+            )
             if parsed is None:
                 block_ok = False
                 break
