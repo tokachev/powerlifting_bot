@@ -259,6 +259,11 @@ def _build_r_na_w(
 
 
 _MAX_BW_SETS = 20  # bodyweight set count cap for N*R fallback pattern
+_MAX_DUMBBELL_N_STAR_R_SETS = 6  # above this, dumbbell N*R likely means weight×reps
+
+
+def _n_star_r_looks_like_dumbbell_weight_reps(first: float) -> bool:
+    return not first.is_integer() or first > _MAX_DUMBBELL_N_STAR_R_SETS
 
 
 def _build_n_star_r(
@@ -330,9 +335,16 @@ def _match_setgroup_at_start(
         if m is None:
             continue
         if pattern is RE_N_STAR_R and prefer_weight_reps_for_n_star_r:
-            weight = _to_float(m.group("sets"))
-            reps = int(m.group("reps"))
-            sets = [ParsedSet(reps=reps, weight_kg=weight, rpe=rpe, is_warmup=is_warmup)]
+            first = _to_float(m.group("sets"))
+            if _n_star_r_looks_like_dumbbell_weight_reps(first):
+                reps = int(m.group("reps"))
+                sets = [
+                    ParsedSet(
+                        reps=reps, weight_kg=first, rpe=rpe, is_warmup=is_warmup
+                    )
+                ]
+            else:
+                sets = builder(m, rpe, is_warmup)
         else:
             sets = builder(m, rpe, is_warmup)
         if not sets:

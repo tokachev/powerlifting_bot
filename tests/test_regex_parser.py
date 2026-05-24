@@ -516,6 +516,15 @@ def test_dumbbell_single_weight_reps_lines_parse_as_weight_reps() -> None:
     ]
 
 
+
+def test_dumbbell_plausible_n_star_r_preserves_set_count() -> None:
+    """Dumbbell `4х12` is still commonly 4 sets × 12 reps, not 4kg × 12."""
+    result = parse("бицепс с гантелями 4*12")
+    assert result is not None
+    ex = result[0]
+    assert len(ex.sets) == 4
+    assert all(s.reps == 12 and s.weight_kg == 0.0 for s in ex.sets)
+
 def test_sets_of_lookahead_blocks_greedy_weight() -> None:
     """Bare regression test for the specific weight-greediness bug."""
     # Two groups separated by space — weight slot should not eat leading 2 from second.
