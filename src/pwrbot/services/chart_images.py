@@ -36,6 +36,11 @@ CHARTS: tuple[ChartDefinition, ...] = (
         export_path="/export/chart/overview-intensity",
     ),
     ChartDefinition(
+        id="bodyweight-trend",
+        title="График веса тела",
+        export_path="/export/chart/bodyweight-trend",
+    ),
+    ChartDefinition(
         id="lift-e1rm",
         title="e1RM по упражнению",
         export_path="/export/chart/lift-e1rm",
