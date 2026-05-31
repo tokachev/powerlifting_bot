@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pwrbot.bot.app import configure_bot_commands
+from pwrbot.bot.handlers import edit
 
 
 class FakeBot:
@@ -38,3 +39,14 @@ async def test_configure_bot_commands_registers_slash_menu_commands() -> None:
         "append",
     ]
     assert all(command.description for command in bot.commands)
+
+
+def test_append_menu_command_is_handled_as_add_alias() -> None:
+    add_handler = next(
+        handler for handler in edit.router.message.handlers
+        if handler.callback.__name__ == "cmd_add"
+    )
+
+    command_filter = add_handler.filters[0].callback
+
+    assert command_filter.commands == ("add", "append")
