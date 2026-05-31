@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from typing import Protocol
+
 import aiosqlite
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import BotCommand
 
 from pwrbot.bot.handlers import analyze as h_analyze
 from pwrbot.bot.handlers import basic as h_basic
@@ -27,6 +30,35 @@ from pwrbot.services.ingest import IngestService
 from pwrbot.services.max_query import MaxQueryService
 from pwrbot.services.predict import PredictService
 from pwrbot.services.technique import TechniqueAnalysisService
+
+BOT_COMMANDS: tuple[BotCommand, ...] = (
+    BotCommand(command="help", description="Помощь и примеры"),
+    BotCommand(command="log", description="Записать тренировку"),
+    BotCommand(command="today", description="Тренировка за сегодня"),
+    BotCommand(command="lastworkout", description="Последняя тренировка"),
+    BotCommand(command="week", description="Неделя тренировок"),
+    BotCommand(command="analyze", description="Анализ последних тренировок"),
+    BotCommand(command="stats", description="Статистика"),
+    BotCommand(command="1rm", description="Оценка 1ПМ"),
+    BotCommand(command="prs", description="Личные рекорды"),
+    BotCommand(command="volume", description="Объём нагрузки"),
+    BotCommand(command="predict", description="План следующей тренировки"),
+    BotCommand(command="charts", description="Графики"),
+    BotCommand(command="chart", description="Один график"),
+    BotCommand(command="delete_last", description="Удалить последнюю запись"),
+    BotCommand(command="edit_last", description="Редактировать последнюю запись"),
+    BotCommand(command="add", description="Добавить подходы к последней тренировке"),
+    BotCommand(command="append", description="Добавить подходы к последней тренировке"),
+)
+
+
+class BotWithCommands(Protocol):
+    async def set_my_commands(self, commands: list[BotCommand]) -> object: ...
+
+
+async def configure_bot_commands(bot: BotWithCommands) -> None:
+    """Register slash commands shown by Telegram in the bot menu."""
+    await bot.set_my_commands(list(BOT_COMMANDS))
 
 
 def build_dispatcher(

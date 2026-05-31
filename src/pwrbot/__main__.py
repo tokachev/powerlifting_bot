@@ -6,7 +6,7 @@ import asyncio
 
 import httpx
 
-from pwrbot.bot.app import build_bot, build_dispatcher
+from pwrbot.bot.app import build_bot, build_dispatcher, configure_bot_commands
 from pwrbot.config import load_settings
 from pwrbot.db.connection import open_and_bootstrap
 from pwrbot.domain.catalog import load_catalog
@@ -106,6 +106,7 @@ async def _main_async() -> None:
     )
 
     bot = build_bot(settings.telegram_token)
+    await configure_bot_commands(bot)
     dp = build_dispatcher(
         conn=conn,
         ingest=ingest_svc,
