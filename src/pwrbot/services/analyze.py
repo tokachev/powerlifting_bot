@@ -102,7 +102,6 @@ def _build_training_context(
             {
                 "date": datetime.fromtimestamp(w.performed_at, tz=UTC).date().isoformat(),
                 "workout_id": w.id,
-                "source_text": w.source_text[:500],
                 "exercises": [
                     _summarize_exercise_for_context(ex, history=history, cfg=cfg)
                     for ex in w.exercises

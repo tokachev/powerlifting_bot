@@ -132,7 +132,7 @@ async def test_analyze_explain_prompt_gets_recent_workout_context(conn, yaml_con
     assert llm.explain_metrics is not None
     context = llm.explain_metrics["training_context"]
     assert context["recent_workouts_count"] == 1
-    assert context["recent_workouts"][0]["source_text"] == "жим лежа 4x5x100, тяга вертикальная 4x10x70"
+    assert "source_text" not in context["recent_workouts"][0]
     assert context["recent_workouts"][0]["exercises"] == [
         {
             "name": "bench_press",
