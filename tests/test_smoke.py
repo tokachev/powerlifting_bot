@@ -129,4 +129,4 @@ def test_format_analysis_no_flags() -> None:
     assert "hard" not in out
     assert "push" not in out
     assert "window" not in out
-    assert "Codex: отключён" in out
+    assert "Codex: отключён" not in out

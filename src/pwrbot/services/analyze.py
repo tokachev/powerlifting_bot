@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
 import aiosqlite
@@ -14,7 +15,7 @@ from pwrbot.db import repo
 from pwrbot.llm.codex_client import CodexClient
 from pwrbot.logging_setup import get_logger
 from pwrbot.parsing.llm_parser import LLMParser
-from pwrbot.rules import engine
+from pwrbot.rules import engine, volume
 from pwrbot.rules.recommendation import NextWorkoutRecommendation, recommend_next_workout
 
 log = get_logger(__name__)
@@ -38,7 +39,81 @@ class AnalyzeResult:
     next_workout: NextWorkoutRecommendation | None = None
 
 
+def _fmt_weight(kg: float) -> str:
+    if kg == int(kg):
+        return str(int(kg))
+    return f"{kg:.1f}"
+
+
+def _fmt_set_for_context(s: repo.SetRow) -> str:
+    kg = s.weight_g / 1000.0
+    weight = f"{_fmt_weight(kg)}кг" if kg else "собственный вес"
+    rpe = f" @{_fmt_weight(s.rpe)}" if s.rpe is not None else ""
+    return f"{s.reps}×{weight}{rpe}"
+
+
+def _is_context_hard_set(
+    s: repo.SetRow, *, rolling_best_kg: float | None, cfg: YamlConfig
+) -> bool:
+    if s.is_warmup:
+        return False
+    return volume.is_hard_set(
+        reps=s.reps,
+        weight_kg=s.weight_g / 1000.0,
+        rpe=s.rpe,
+        thresholds=cfg.thresholds,
+        rolling_best_kg=rolling_best_kg,
+    )
+
+
+def _summarize_exercise_for_context(
+    ex: repo.ExerciseRow, *, history: list[repo.WorkoutRow], cfg: YamlConfig
+) -> dict[str, Any]:
+    working_sets = [s for s in ex.sets if not s.is_warmup]
+    rolling_best_kg = volume.rolling_best_weight_kg(history, ex.canonical_name)
+    hard_sets = [
+        s
+        for s in working_sets
+        if _is_context_hard_set(s, rolling_best_kg=rolling_best_kg, cfg=cfg)
+    ]
+    top_set = max(
+        working_sets,
+        key=lambda s: (s.weight_g, s.reps, s.rpe or 0.0),
+        default=None,
+    )
+    return {
+        "name": ex.canonical_name or ex.raw_name,
+        "movement_pattern": ex.movement_pattern,
+        "working_sets": len(working_sets),
+        "hard_sets": len(hard_sets),
+        "top_set": _fmt_set_for_context(top_set) if top_set is not None else None,
+    }
+
+
+def _build_training_context(
+    *, history: list[repo.WorkoutRow], window_days: int, now_ts: int, cfg: YamlConfig
+) -> dict[str, Any]:
+    since_ts = now_ts - window_days * 86_400
+    recent = [w for w in history if w.performed_at >= since_ts]
+    recent = sorted(recent, key=lambda w: (w.performed_at, w.id))[-8:]
+    return {
+        "recent_workouts_count": len(recent),
+        "recent_workouts": [
+            {
+                "date": datetime.fromtimestamp(w.performed_at, tz=UTC).date().isoformat(),
+                "workout_id": w.id,
+                "exercises": [
+                    _summarize_exercise_for_context(ex, history=history, cfg=cfg)
+                    for ex in w.exercises
+                ],
+            }
+            for w in recent
+        ],
+    }
+
+
 class AnalyzeService:
+
     def __init__(
         self,
         *,
@@ -80,15 +155,22 @@ class AnalyzeService:
             flags=result["flags"],
             thresholds=self._cfg.thresholds,
         )
+        metrics = dict(result["metrics"])
+        metrics["training_context"] = _build_training_context(
+            history=history,
+            window_days=window_days,
+            now_ts=now_ts,
+            cfg=self._cfg,
+        )
 
         gemma_result, codex_result = await asyncio.gather(
             self._call_gemma(
-                metrics=result["metrics"],
+                metrics=metrics,
                 flags=result["flags"],
                 window_days=window_days,
             ),
             self._call_codex(
-                metrics=result["metrics"],
+                metrics=metrics,
                 flags=result["flags"],
                 window_days=window_days,
             ),
@@ -105,14 +187,14 @@ class AnalyzeService:
             conn,
             user_id=user_id,
             window_days=window_days,
-            metrics=result["metrics"],
+            metrics=metrics,
             flags=result["flags"],
             explanation=explanation_gemma.text or explanation_codex.text,
         )
 
         return AnalyzeResult(
             window_days=window_days,
-            metrics=result["metrics"],
+            metrics=metrics,
             flags=result["flags"],
             explanation_gemma=explanation_gemma,
             explanation_codex=explanation_codex,
