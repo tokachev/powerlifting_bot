@@ -1,11 +1,11 @@
-"""/delete_last, /edit_last, /add.
+"""/delete_last, /edit_last, /add, /append.
 
 `/edit_last <text>` is modelled as full-replace: delete the last workout then
 re-ingest the new text. Simpler than field-level editing and obvious to the user.
 
-`/add <text>` parses the text the same way as a normal log message but appends
-the resulting exercises to the most recent workout — for cases like "забыл одно
-упражнение и хочу добавить".
+`/add <text>` and its `/append <text>` alias parse the text the same way as a
+normal log message but append the resulting exercises to the most recent workout
+— for cases like "забыл одно упражнение и хочу добавить".
 """
 
 from __future__ import annotations
@@ -71,7 +71,7 @@ async def cmd_edit_last(
     )
 
 
-@router.message(Command("add"))
+@router.message(Command("add", "append"))
 async def cmd_add(
     message: Message,
     command: CommandObject,
@@ -84,7 +84,8 @@ async def cmd_add(
     text = (command.args or "").strip()
     if not text:
         await message.answer(
-            "Использование: `/add <текст>` — дописать упражнения к последней тренировке."
+            "Использование: `/add <текст>` или `/append <текст>` — "
+            "дописать упражнения к последней тренировке."
         )
         return
     uid = await repo.get_or_create_user(conn, telegram_id=message.from_user.id)
