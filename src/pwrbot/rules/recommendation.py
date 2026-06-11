@@ -8,10 +8,10 @@ from typing import Any
 from pwrbot.config import Thresholds
 
 _PATTERN_LABELS: dict[str, str] = {
-    "squat": "squat",
-    "hinge": "hinge",
-    "push": "push",
-    "pull": "pull",
+    "squat": "приседания",
+    "hinge": "становая и наклоны",
+    "push": "жимы",
+    "pull": "тяги на спину",
     "recovery": "восстановительная",
 }
 
@@ -72,17 +72,17 @@ def _imbalance_candidates(
             push = int(balance.get("push_hard_sets", flag.get("push_hard_sets", 0)) or 0)
             pull = int(balance.get("pull_hard_sets", flag.get("pull_hard_sets", 0)) or 0)
             if ratio == float("inf") or (ratio is not None and ratio > target) or push > pull:
-                candidates.append(("pull", "сбалансировать избыток push относительно pull"))
+                candidates.append(("pull", "сбалансировать избыток жимов относительно тяг"))
             else:
-                candidates.append(("push", "сбалансировать недостаток push относительно pull"))
+                candidates.append(("push", "сбалансировать недостаток жимов относительно тяг"))
 
         if axis == "squat_hinge":
             squat = int(balance.get("squat_hard_sets", flag.get("squat_hard_sets", 0)) or 0)
             hinge = int(balance.get("hinge_hard_sets", flag.get("hinge_hard_sets", 0)) or 0)
             if ratio == float("inf") or (ratio is not None and ratio > target) or squat > hinge:
-                candidates.append(("hinge", "сбалансировать избыток squat относительно hinge"))
+                candidates.append(("hinge", "сбалансировать избыток приседаний относительно становой"))
             else:
-                candidates.append(("squat", "сбалансировать недостаток squat относительно hinge"))
+                candidates.append(("squat", "сбалансировать недостаток приседаний относительно становой"))
 
     return candidates
 
@@ -114,7 +114,7 @@ def recommend_next_workout(
                 title=f"Следующая тренировка: {_pattern_label(pattern)}",
                 rationale=[
                     reason,
-                    f"за 7 дней: {hard_sets.get(pattern, 0)}/{caps[pattern]} hard-сетов",
+                    f"за 7 дней: {hard_sets.get(pattern, 0)}/{caps[pattern]} тяжёлых сетов",
                 ],
                 caution_patterns=sorted(blocked),
             )
@@ -140,7 +140,7 @@ def recommend_next_workout(
         title=f"Следующая тренировка: {_pattern_label(focus)}",
         rationale=[
             "минимальная недавняя нагрузка относительно недельного лимита",
-            f"за 7 дней: {hard_sets.get(focus, 0)}/{caps[focus]} hard-сетов",
+            f"за 7 дней: {hard_sets.get(focus, 0)}/{caps[focus]} тяжёлых сетов",
         ],
         caution_patterns=sorted(blocked),
     )

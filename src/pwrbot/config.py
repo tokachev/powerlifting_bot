@@ -35,12 +35,29 @@ class WarmupThresholds(BaseModel):
     max_fraction_of_working_weight: float
 
 
+class ProgressThresholds(BaseModel):
+    """Thresholds for trend-based flags (stagnation, frequency, monotony).
+
+    All fields have defaults so existing settings.yaml files keep loading.
+    """
+
+    model_config = ConfigDict(frozen=True)
+    stagnation_min_sessions: int = 3
+    stagnation_min_days_since_best: int = 21
+    stagnation_tolerance_kg: float = 1.0
+    frequency_drop_fraction: float = 0.5
+    neglected_pattern_days: int = 14
+    rep_monotony_fraction: float = 0.85
+    rep_monotony_min_sets: int = 20
+
+
 class Thresholds(BaseModel):
     model_config = ConfigDict(frozen=True)
     hard_set: HardSetThresholds
     balance: BalanceThresholds
     recovery: RecoveryThresholds
     warmup: WarmupThresholds
+    progress: ProgressThresholds = ProgressThresholds()
 
 
 class Windows(BaseModel):

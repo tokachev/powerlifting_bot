@@ -46,6 +46,17 @@ class WorkoutRow:
     exercises: list[ExerciseRow]
 
 
+@dataclass(slots=True)
+class SnapshotRow:
+    id: int
+    user_id: int
+    window_days: int
+    computed_at: int
+    metrics: dict[str, Any]
+    flags: list[dict[str, Any]]
+    explanation: str | None
+
+
 # ------------------------------------------------------------------ users
 
 
@@ -365,6 +376,33 @@ async def save_snapshot(
     )
     await conn.commit()
     return int(cursor.lastrowid)
+
+
+async def get_latest_snapshot(
+    conn: aiosqlite.Connection,
+    *,
+    user_id: int,
+) -> SnapshotRow | None:
+    """Return the most recent analysis snapshot for the user, or None."""
+    row = await (
+        await conn.execute(
+            "SELECT id, user_id, window_days, computed_at, metrics_json, flags_json, "
+            "explanation FROM analysis_snapshots "
+            "WHERE user_id = ? ORDER BY computed_at DESC, id DESC LIMIT 1",
+            (user_id,),
+        )
+    ).fetchone()
+    if row is None:
+        return None
+    return SnapshotRow(
+        id=int(row["id"]),
+        user_id=int(row["user_id"]),
+        window_days=int(row["window_days"]),
+        computed_at=int(row["computed_at"]),
+        metrics=json.loads(row["metrics_json"]),
+        flags=json.loads(row["flags_json"]),
+        explanation=row["explanation"],
+    )
 
 
 # ------------------------------------------------------------------ body weight

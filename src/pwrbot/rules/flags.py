@@ -1,4 +1,4 @@
-"""Imbalance and recovery-risk flag detection.
+"""Imbalance, recovery-risk and progress flag detection.
 
 Produces a list of dict flags (kind, pattern, details) ready to be JSON-serialized
 into analysis_snapshots.flags_json.
@@ -6,9 +6,17 @@ into analysis_snapshots.flags_json.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
+
 from pwrbot.config import Thresholds
+from pwrbot.db.repo import WorkoutRow
+from pwrbot.metrics.rep_distribution import compute_rep_distribution
 from pwrbot.rules.balance import BalanceMetrics
 from pwrbot.rules.volume import VolumeMetrics
+
+if TYPE_CHECKING:
+    from pwrbot.metrics.e1rm_trend import E1RMPoint
 
 
 def _ratio_outside_tolerance(
@@ -105,3 +113,135 @@ def recovery_flags(
             )
 
     return out
+
+
+def stagnation_flags(
+    points: list[E1RMPoint],
+    *,
+    now_ts: int,
+    thresholds: Thresholds,
+) -> list[dict]:
+    """Stagnation = the best e1RM of the window was set long ago and hasn't been
+    beaten (within tolerance) since, despite enough sessions of the exercise.
+
+    `points` come from metrics.e1rm_trend.compute_e1rm_trend over the 28d history.
+    """
+    p = thresholds.progress
+    out: list[dict] = []
+
+    by_name: dict[str, list[E1RMPoint]] = {}
+    for point in points:
+        by_name.setdefault(point.canonical_name, []).append(point)
+
+    today = datetime.fromtimestamp(now_ts, tz=UTC).date()
+    for name, pts in by_name.items():
+        if len(pts) < p.stagnation_min_sessions:
+            continue
+        pts = sorted(pts, key=lambda x: x.date)
+        # The best only moves on a meaningful improvement (>= tolerance over the
+        # previous best) — a sub-tolerance bump like 120.0 -> 120.2 is still a
+        # plateau and must not reset days_since_best.
+        best = pts[0]
+        for point in pts[1:]:
+            if point.estimated_1rm_kg >= best.estimated_1rm_kg + p.stagnation_tolerance_kg:
+                best = point
+        days_since_best = (today - best.date).days
+        if days_since_best < p.stagnation_min_days_since_best:
+            continue
+        if not any(x.date > best.date for x in pts):
+            continue
+        out.append(
+            {
+                "kind": "stagnation",
+                "exercise": name,
+                "sessions": len(pts),
+                "best_e1rm_kg": round(best.estimated_1rm_kg, 1),
+                "best_date": best.date.isoformat(),
+                "days_since_best": days_since_best,
+                "last_e1rm_kg": round(pts[-1].estimated_1rm_kg, 1),
+            }
+        )
+
+    return out
+
+
+def frequency_drop_flags(
+    workouts_28d: list[WorkoutRow],
+    *,
+    now_ts: int,
+    thresholds: Thresholds,
+) -> list[dict]:
+    """Flag when the last 7 days had clearly fewer workouts than the user's
+    own average over the previous three weeks."""
+    p = thresholds.progress
+    day_s = 86_400
+    week_ago = now_ts - 7 * day_s
+
+    current_days = {w.performed_at // day_s for w in workouts_28d if w.performed_at >= week_ago}
+    prior_days = {w.performed_at // day_s for w in workouts_28d if w.performed_at < week_ago}
+    if not prior_days:
+        return []
+    prior_weekly_avg = len(prior_days) / 3.0
+    if prior_weekly_avg < 1.0:
+        return []
+    if len(current_days) >= prior_weekly_avg * p.frequency_drop_fraction:
+        return []
+    return [
+        {
+            "kind": "frequency_drop",
+            "workouts_7d": len(current_days),
+            "prior_weekly_avg": round(prior_weekly_avg, 1),
+        }
+    ]
+
+
+def neglected_pattern_flags(
+    *,
+    recent_metrics: VolumeMetrics,
+    prior_metrics: VolumeMetrics,
+    thresholds: Thresholds,
+) -> list[dict]:
+    """Flag movement patterns that were trained in the prior 14 days but have
+    zero working sets in the most recent 14 days."""
+    out: list[dict] = []
+    for pattern, prior_sets in prior_metrics.working_sets_by_pattern.items():
+        if pattern == "accessory":
+            continue
+        if prior_sets <= 0:
+            continue
+        if recent_metrics.working_sets_by_pattern.get(pattern, 0) > 0:
+            continue
+        out.append(
+            {
+                "kind": "neglected_pattern",
+                "pattern": pattern,
+                "prior_working_sets": prior_sets,
+                "days": thresholds.progress.neglected_pattern_days,
+            }
+        )
+    return out
+
+
+def rep_monotony_flags(
+    workouts_28d: list[WorkoutRow],
+    *,
+    thresholds: Thresholds,
+) -> list[dict]:
+    """Flag when nearly all working sets over 28d fall into one rep-range bucket."""
+    p = thresholds.progress
+    buckets = compute_rep_distribution(workouts_28d)
+    total_sets = sum(b.set_count for b in buckets)
+    if total_sets < p.rep_monotony_min_sets:
+        return []
+    top = max(buckets, key=lambda b: b.set_count)
+    if top.set_count / total_sets < p.rep_monotony_fraction:
+        return []
+    return [
+        {
+            "kind": "rep_monotony",
+            "rep_range": top.rep_range,
+            "sets_in_range": top.set_count,
+            "total_sets": total_sets,
+            "share": round(top.set_count / total_sets, 2),
+        }
+    ]

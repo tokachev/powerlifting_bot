@@ -21,6 +21,14 @@ thresholds:
     tonnage_spike_ratio: 1.5
   warmup:
     max_fraction_of_working_weight: 0.60   # set считается warmup если вес < 60% от макс. рабочего того же упражнения
+  progress:
+    stagnation_min_sessions: 3             # минимум сессий упражнения за 28д для флага стагнации
+    stagnation_min_days_since_best: 21     # лучший e1RM не побит столько дней → стагнация
+    stagnation_tolerance_kg: 1.0           # рост меньше этого не считается прогрессом
+    frequency_drop_fraction: 0.5           # тренировок за 7д < 50% от среднего за пред. 3 недели → флаг
+    neglected_pattern_days: 14             # паттерн тренировался в днях 14-28, но 0 за последние 14д → флаг
+    rep_monotony_fraction: 0.85            # ≥85% рабочих сетов в одном диапазоне повторов → флаг
+    rep_monotony_min_sets: 20              # монотонность считается только при достаточной выборке
 
 volume_landmarks:
   legs:      { mev: 10, mav: 16, mrv: 22 }

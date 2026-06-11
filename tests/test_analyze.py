@@ -15,16 +15,24 @@ class _SlowLLM:
         self.render_calls = 0
         self.explain_metrics = None
         self.render_metrics = None
+        self.explain_previous: str | None = None
+        self.render_previous: str | None = None
 
-    async def explain(self, *, metrics, flags, window_days) -> str:
+    async def explain(
+        self, *, metrics, flags, window_days, previous_analysis: str = ""
+    ) -> str:
         self.explain_calls += 1
         self.explain_metrics = metrics
+        self.explain_previous = previous_analysis
         await asyncio.sleep(self.delay_s)
         return "gemma explanation"
 
-    def render_explain_prompt(self, *, metrics, flags, window_days) -> tuple[str, str]:
+    def render_explain_prompt(
+        self, *, metrics, flags, window_days, previous_analysis: str = ""
+    ) -> tuple[str, str]:
         self.render_calls += 1
         self.render_metrics = metrics
+        self.render_previous = previous_analysis
         return "system prompt", "user prompt"
 
 
@@ -150,3 +158,63 @@ async def test_analyze_explain_prompt_gets_recent_workout_context(conn, yaml_con
         },
     ]
     assert result.metrics["training_context"] == context
+
+
+def _bench_workout(reps: int, weight_g: int) -> list[ExerciseRow]:
+    return [
+        ExerciseRow(
+            position=1,
+            raw_name="жим лежа",
+            canonical_name="bench_press",
+            movement_pattern="push",
+            sets=[SetRow(reps=reps, weight_g=weight_g, rpe=8.0, is_warmup=False, set_index=1)],
+        )
+    ]
+
+
+async def test_analyze_metrics_include_delta_and_progress(conn, yaml_config) -> None:
+    uid = await repo.get_or_create_user(conn, telegram_id=45)
+    now_ts = int(time.time())
+    await repo.insert_workout(
+        conn,
+        user_id=uid,
+        performed_at=now_ts - 8 * 86_400,
+        source_text="жим лежа 1x5x100",
+        exercises=_bench_workout(reps=5, weight_g=100_000),
+    )
+    await repo.insert_workout(
+        conn,
+        user_id=uid,
+        performed_at=now_ts - 86_400,
+        source_text="жим лежа 1x5x110",
+        exercises=_bench_workout(reps=5, weight_g=110_000),
+    )
+    llm = _SlowLLM(delay_s=0)
+    svc = AnalyzeService(cfg=yaml_config, llm=llm, codex=None)  # type: ignore[arg-type]
+
+    result = await svc.analyze(conn, user_id=uid, window_days=7)
+
+    delta = result.metrics["delta_7d"]
+    assert delta["tonnage_kg"] == 50.0  # 550 vs 500
+    assert delta["tonnage_pct"] == 10.0
+    assert "prev_7d" in result.metrics
+
+    progress = result.metrics["progress_28d"]
+    bench = next(p for p in progress if p["name"] == "bench_press")
+    assert bench["sessions"] == 2
+    assert bench["direction"] == "рост"
+    assert bench["delta_kg"] > 0
+
+
+async def test_analyze_passes_previous_analysis_to_llm(conn, yaml_config) -> None:
+    uid = await repo.get_or_create_user(conn, telegram_id=46)
+    llm = _SlowLLM(delay_s=0)
+    svc = AnalyzeService(cfg=yaml_config, llm=llm, codex=None)  # type: ignore[arg-type]
+
+    await svc.analyze(conn, user_id=uid, window_days=7)
+    assert llm.explain_previous == ""  # first run: no prior snapshot
+
+    await svc.analyze(conn, user_id=uid, window_days=7)
+    assert llm.explain_previous is not None
+    assert "Прошлый разбор" in llm.explain_previous
+    assert "gemma explanation" in llm.explain_previous

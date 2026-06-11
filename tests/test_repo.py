@@ -199,3 +199,32 @@ async def test_save_snapshot_roundtrip(conn: aiosqlite.Connection) -> None:
     assert "tonnage_kg" in row["metrics_json"]
     assert "recovery_risk" in row["flags_json"]
     assert row["explanation"] == "всё норм"
+
+
+async def test_get_latest_snapshot(conn: aiosqlite.Connection) -> None:
+    from pwrbot.db.repo import get_latest_snapshot
+
+    uid = await get_or_create_user(conn, telegram_id=42)
+    assert await get_latest_snapshot(conn, user_id=uid) is None
+
+    await save_snapshot(
+        conn, user_id=uid, window_days=7, metrics={"a": 1}, flags=[], explanation="первый"
+    )
+    sid2 = await save_snapshot(
+        conn,
+        user_id=uid,
+        window_days=7,
+        metrics={"a": 2},
+        flags=[{"kind": "stagnation", "exercise": "bench_press"}],
+        explanation="второй",
+    )
+
+    snap = await get_latest_snapshot(conn, user_id=uid)
+    assert snap is not None
+    assert snap.id == sid2
+    assert snap.metrics == {"a": 2}
+    assert snap.flags == [{"kind": "stagnation", "exercise": "bench_press"}]
+    assert snap.explanation == "второй"
+
+    other = await get_or_create_user(conn, telegram_id=43)
+    assert await get_latest_snapshot(conn, user_id=other) is None
