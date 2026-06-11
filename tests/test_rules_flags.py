@@ -133,6 +133,23 @@ def test_stagnation_no_flag_when_recent_improvement(yaml_config) -> None:
     assert result == []
 
 
+def test_stagnation_flag_fires_despite_sub_tolerance_improvement(yaml_config) -> None:
+    # +0.2 kg over the old best is within the 1 kg tolerance: still a plateau,
+    # the recent micro-PR must not reset days_since_best.
+    now_ts = _ts("2026-04-01T12:00:00")
+    points = [
+        _point("2026-03-01", "bench_press", 120.0),
+        _point("2026-03-10", "bench_press", 118.0),
+        _point("2026-03-27", "bench_press", 120.2),
+    ]
+    result = flags.stagnation_flags(points, now_ts=now_ts, thresholds=yaml_config.thresholds)
+    assert len(result) == 1
+    f = result[0]
+    assert f["best_e1rm_kg"] == 120.0
+    assert f["days_since_best"] == 31
+    assert f["last_e1rm_kg"] == 120.2
+
+
 def test_stagnation_no_flag_below_min_sessions(yaml_config) -> None:
     now_ts = _ts("2026-04-01T12:00:00")
     points = [

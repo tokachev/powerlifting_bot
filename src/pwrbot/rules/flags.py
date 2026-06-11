@@ -138,15 +138,17 @@ def stagnation_flags(
         if len(pts) < p.stagnation_min_sessions:
             continue
         pts = sorted(pts, key=lambda x: x.date)
-        best = max(pts, key=lambda x: x.estimated_1rm_kg)
+        # The best only moves on a meaningful improvement (>= tolerance over the
+        # previous best) — a sub-tolerance bump like 120.0 -> 120.2 is still a
+        # plateau and must not reset days_since_best.
+        best = pts[0]
+        for point in pts[1:]:
+            if point.estimated_1rm_kg >= best.estimated_1rm_kg + p.stagnation_tolerance_kg:
+                best = point
         days_since_best = (today - best.date).days
         if days_since_best < p.stagnation_min_days_since_best:
             continue
-        later = [x for x in pts if x.date > best.date]
-        if not later:
-            continue
-        best_after = max(x.estimated_1rm_kg for x in later)
-        if best_after >= best.estimated_1rm_kg + p.stagnation_tolerance_kg:
+        if not any(x.date > best.date for x in pts):
             continue
         out.append(
             {
