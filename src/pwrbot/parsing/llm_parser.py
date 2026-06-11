@@ -147,11 +147,18 @@ class LLMParser:
         return CanonicalizeResult(canonical_name=canonical, suggestions=suggestions)
 
     async def explain(
-        self, metrics: dict, flags: list, window_days: int
+        self,
+        metrics: dict,
+        flags: list,
+        window_days: int,
+        previous_analysis: str = "",
     ) -> str:
         """Free-form explanation. Not JSON — we return the raw string from /api/chat."""
         system, user = self.render_explain_prompt(
-            metrics=metrics, flags=flags, window_days=window_days
+            metrics=metrics,
+            flags=flags,
+            window_days=window_days,
+            previous_analysis=previous_analysis,
         )
         # Plain-text call: we use httpx directly via the client's underlying session.
         resp = await self._client._client.post(
@@ -170,13 +177,18 @@ class LLMParser:
         return resp.json().get("message", {}).get("content", "").strip()
 
     def render_explain_prompt(
-        self, metrics: dict, flags: list, window_days: int
+        self,
+        metrics: dict,
+        flags: list,
+        window_days: int,
+        previous_analysis: str = "",
     ) -> tuple[str, str]:
         tmpl = self._prompts.render(
             "explain_findings",
             metrics_json=json.dumps(metrics, ensure_ascii=False),
             flags_json=json.dumps(flags, ensure_ascii=False),
             window_days=str(window_days),
+            previous_analysis=previous_analysis or "(прошлых разборов нет)",
         )
         system, _, user = tmpl.partition("USER:")
         system = system.replace("SYSTEM:", "").strip()

@@ -9,6 +9,7 @@ from pwrbot.db.repo import WorkoutRow
 from pwrbot.domain.models import WorkoutPayload
 from pwrbot.metrics.pr import DetectedPR
 from pwrbot.rules.one_rm import OneRMEstimate
+from pwrbot.rules.recommendation import NextWorkoutRecommendation
 from pwrbot.services.analyze import AnalyzeResult
 
 _BIG3_DISPLAY: dict[str, str] = {
@@ -136,6 +137,30 @@ def format_flag(f: dict) -> str:
             f"перегрузка {_fmt_pattern(f.get('pattern'))}: "
             f"{f.get('hard_sets_7d')} тяжёлых сетов за 7 дней (лимит {f.get('cap')})"
         )
+    if kind == "stagnation":
+        name = f.get("exercise", "?")
+        display = _BIG3_DISPLAY.get(name, name)
+        return (
+            f"стагнация {display}: лучший e1RM ~{f.get('best_e1rm_kg')} кг "
+            f"не побит {f.get('days_since_best')} дней "
+            f"(сейчас ~{f.get('last_e1rm_kg')} кг)"
+        )
+    if kind == "frequency_drop":
+        return (
+            f"частота упала: {f.get('workouts_7d')} тренировок за 7 дней "
+            f"против обычных ~{f.get('prior_weekly_avg')} в неделю"
+        )
+    if kind == "neglected_pattern":
+        return (
+            f"заброшено: {_fmt_pattern(f.get('pattern'))} — "
+            f"0 рабочих сетов за {f.get('days')} дней "
+            f"(до этого было {f.get('prior_working_sets')})"
+        )
+    if kind == "rep_monotony":
+        return (
+            f"однообразие повторов: {int(float(f.get('share', 0)) * 100)}% сетов "
+            f"в диапазоне {f.get('rep_range')} за 28 дней"
+        )
     return str(f)
 
 
@@ -165,12 +190,37 @@ def _format_explain_backend(name: str, result) -> str:
     return f"{name}: нет объяснения"
 
 
+def _fmt_tonnage_delta(delta: dict) -> str:
+    """Render delta_7d as a short suffix like ' (+8% к прошлой неделе)'."""
+    pct = delta.get("tonnage_pct")
+    if pct is None:
+        return ""
+    sign = "+" if pct >= 0 else ""
+    return f" ({sign}{_fmt_weight(pct)}% к прошлой неделе)"
+
+
+def format_next_workout(rec: NextWorkoutRecommendation | None) -> str | None:
+    """Render the deterministic next-workout recommendation block."""
+    if rec is None:
+        return None
+    lines = [rec.title]
+    for reason in rec.rationale:
+        lines.append(f"  • {reason}")
+    if rec.caution_patterns:
+        patterns = ", ".join(_fmt_pattern(p) for p in rec.caution_patterns)
+        lines.append(f"  осторожно с: {patterns}")
+    return "\n".join(lines)
+
+
 def format_analysis(result: AnalyzeResult) -> str:
     lines = [f"Анализ за {result.window_days} дней:"]
     window = result.metrics.get("window", {})
     tonnage = window.get("total_tonnage_kg", 0)
     hard_sets = window.get("total_hard_sets", 0)
-    lines.append(f"  тоннаж: {_fmt_weight(tonnage)} кг, тяжёлых сетов: {hard_sets}")
+    delta_suffix = _fmt_tonnage_delta(result.metrics.get("delta_7d", {}))
+    lines.append(
+        f"  тоннаж: {_fmt_weight(tonnage)} кг{delta_suffix}, тяжёлых сетов: {hard_sets}"
+    )
     hard_by_p = window.get("hard_sets_by_pattern", {})
     if hard_by_p:
         parts = ", ".join(
@@ -184,6 +234,10 @@ def format_analysis(result: AnalyzeResult) -> str:
             lines.append(f"  ⚠ {format_flag(f)}")
     else:
         lines.append("Флагов нет.")
+
+    next_block = format_next_workout(result.next_workout)
+    if next_block:
+        lines.append(next_block)
 
     explanations = [
         text

@@ -69,6 +69,23 @@ def run(
     # Balance: use long window — more stable than a single session
     long_balance = balance.compute(long_volume)
 
+    # 14d halves of the long window for neglected-pattern detection
+    neglect_days = cfg.thresholds.progress.neglected_pattern_days
+    recent_half = volume.compute(
+        _split_by_time(all_workouts_28d, now - neglect_days * day_s, now),
+        cfg.thresholds,
+        history_for_intensity=long_window,
+    )
+    prior_half = volume.compute(
+        _split_by_time(
+            all_workouts_28d,
+            now - 2 * neglect_days * day_s,
+            now - neglect_days * day_s - 1,
+        ),
+        cfg.thresholds,
+        history_for_intensity=long_window,
+    )
+
     # Flags
     imbalance = flags.imbalance_flags(long_balance, cfg.thresholds)
     recovery = flags.recovery_flags(
@@ -76,11 +93,22 @@ def run(
         previous_short_window_metrics=prev_short_volume,
         thresholds=cfg.thresholds,
     )
+    frequency = flags.frequency_drop_flags(
+        all_workouts_28d, now_ts=now, thresholds=cfg.thresholds
+    )
+    neglected = flags.neglected_pattern_flags(
+        recent_metrics=recent_half,
+        prior_metrics=prior_half,
+        thresholds=cfg.thresholds,
+    )
+    monotony = flags.rep_monotony_flags(all_workouts_28d, thresholds=cfg.thresholds)
 
     metrics: dict[str, Any] = {
         "window_days": window_days,
         "window": asdict(window_volume),
         "last_7d": asdict(short_volume),
+        "prev_7d": asdict(prev_short_volume),
+        "delta_7d": _week_over_week_delta(short_volume, prev_short_volume),
         "long_28d": asdict(long_volume),
         "balance_28d": {
             "push_hard_sets": long_balance.push_hard_sets,
@@ -96,5 +124,25 @@ def run(
         "window_days": window_days,
         "computed_at": now,
         "metrics": metrics,
-        "flags": imbalance + recovery,
+        "flags": imbalance + recovery + frequency + neglected + monotony,
+    }
+
+
+def _week_over_week_delta(
+    current: volume.VolumeMetrics, previous: volume.VolumeMetrics
+) -> dict[str, Any]:
+    """Compare the last 7 days against the 7 days before them."""
+    tonnage_delta = round(current.total_tonnage_kg - previous.total_tonnage_kg, 1)
+    tonnage_pct: float | None = None
+    if previous.total_tonnage_kg > 0:
+        tonnage_pct = round(tonnage_delta / previous.total_tonnage_kg * 100, 1)
+    patterns = set(current.hard_sets_by_pattern) | set(previous.hard_sets_by_pattern)
+    return {
+        "tonnage_kg": tonnage_delta,
+        "tonnage_pct": tonnage_pct,
+        "hard_sets": current.total_hard_sets - previous.total_hard_sets,
+        "hard_sets_by_pattern": {
+            p: current.hard_sets_by_pattern.get(p, 0) - previous.hard_sets_by_pattern.get(p, 0)
+            for p in sorted(patterns)
+        },
     }

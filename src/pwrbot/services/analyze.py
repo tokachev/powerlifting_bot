@@ -14,9 +14,14 @@ from pwrbot.config import YamlConfig
 from pwrbot.db import repo
 from pwrbot.llm.codex_client import CodexClient
 from pwrbot.logging_setup import get_logger
+from pwrbot.metrics.e1rm_trend import E1RMPoint, compute_e1rm_trend
 from pwrbot.parsing.llm_parser import LLMParser
 from pwrbot.rules import engine, volume
+from pwrbot.rules import flags as flags_mod
 from pwrbot.rules.recommendation import NextWorkoutRecommendation, recommend_next_workout
+
+_PREVIOUS_EXPLANATION_LIMIT = 600
+_PROGRESS_MAX_EXERCISES = 8
 
 log = get_logger(__name__)
 
@@ -90,6 +95,87 @@ def _summarize_exercise_for_context(
     }
 
 
+def _build_progress_summary(points: list[E1RMPoint]) -> list[dict[str, Any]]:
+    """Per-exercise e1RM progress over the loaded history: first vs last session,
+    delta and direction. Only exercises with at least two sessions are useful."""
+    by_name: dict[str, list[E1RMPoint]] = {}
+    for p in points:
+        by_name.setdefault(p.canonical_name, []).append(p)
+
+    summaries: list[dict[str, Any]] = []
+    for name, pts in by_name.items():
+        if len(pts) < 2:
+            continue
+        pts = sorted(pts, key=lambda x: x.date)
+        first, last = pts[0], pts[-1]
+        best = max(pts, key=lambda x: x.estimated_1rm_kg)
+        delta = round(last.estimated_1rm_kg - first.estimated_1rm_kg, 1)
+        if delta >= 1.0:
+            direction = "рост"
+        elif delta <= -1.0:
+            direction = "спад"
+        else:
+            direction = "плато"
+        summaries.append(
+            {
+                "name": name,
+                "sessions": len(pts),
+                "first_e1rm_kg": round(first.estimated_1rm_kg, 1),
+                "last_e1rm_kg": round(last.estimated_1rm_kg, 1),
+                "delta_kg": delta,
+                "direction": direction,
+                "best_e1rm_kg": round(best.estimated_1rm_kg, 1),
+                "best_date": best.date.isoformat(),
+                "last_date": last.date.isoformat(),
+            }
+        )
+
+    summaries.sort(key=lambda s: (-s["sessions"], s["name"]))
+    return summaries[:_PROGRESS_MAX_EXERCISES]
+
+
+def _flag_key(flag: dict[str, Any]) -> str:
+    """Stable identity of a flag for old-vs-new comparison."""
+    parts = [str(flag.get("kind"))]
+    for field in ("subtype", "axis", "pattern", "exercise", "rep_range"):
+        value = flag.get(field)
+        if value:
+            parts.append(str(value))
+    return ":".join(parts)
+
+
+def _build_previous_analysis(
+    snapshot: repo.SnapshotRow | None,
+    *,
+    now_ts: int,
+    current_flags: list[dict[str, Any]],
+) -> str:
+    """Compact description of the previous analysis for the LLM prompt, so it can
+    talk about what changed instead of repeating itself. Empty string if none."""
+    if snapshot is None:
+        return ""
+    days_ago = max(0, (now_ts - snapshot.computed_at) // 86_400)
+    prev_keys = {_flag_key(f) for f in snapshot.flags}
+    curr_keys = {_flag_key(f) for f in current_flags}
+    new_flags = sorted(curr_keys - prev_keys)
+    resolved_flags = sorted(prev_keys - curr_keys)
+
+    lines = [f"Прошлый разбор был {days_ago} дн. назад."]
+    if new_flags:
+        lines.append("Новые флаги с прошлого раза: " + ", ".join(new_flags))
+    if resolved_flags:
+        lines.append("Флаги, которые ушли: " + ", ".join(resolved_flags))
+    if not new_flags and not resolved_flags:
+        lines.append("Состав флагов не изменился.")
+    if snapshot.explanation:
+        text = snapshot.explanation.strip()
+        if len(text) > _PREVIOUS_EXPLANATION_LIMIT:
+            text = text[: _PREVIOUS_EXPLANATION_LIMIT - 1].rstrip() + "…"
+        lines.append("Текст прошлого разбора:")
+        lines.append(text)
+    return "\n".join(lines)
+
+
 def _build_training_context(
     *, history: list[repo.WorkoutRow], window_days: int, now_ts: int, cfg: YamlConfig
 ) -> dict[str, Any]:
@@ -150,12 +236,29 @@ class AnalyzeService:
             cfg=self._cfg,
             now_ts=now_ts,
         )
+
+        # e1RM trend over the full 28d history: feeds both the progress context
+        # for the LLM and the stagnation flags.
+        canonical_names = sorted(
+            {
+                ex.canonical_name
+                for w in history
+                for ex in w.exercises
+                if ex.canonical_name
+            }
+        )
+        trend_points = compute_e1rm_trend(history, canonical_names)
+        all_flags = result["flags"] + flags_mod.stagnation_flags(
+            trend_points, now_ts=now_ts, thresholds=self._cfg.thresholds
+        )
+
         next_workout = recommend_next_workout(
             metrics=result["metrics"],
-            flags=result["flags"],
+            flags=all_flags,
             thresholds=self._cfg.thresholds,
         )
         metrics = dict(result["metrics"])
+        metrics["progress_28d"] = _build_progress_summary(trend_points)
         metrics["training_context"] = _build_training_context(
             history=history,
             window_days=window_days,
@@ -163,16 +266,23 @@ class AnalyzeService:
             cfg=self._cfg,
         )
 
+        previous_snapshot = await repo.get_latest_snapshot(conn, user_id=user_id)
+        previous_analysis = _build_previous_analysis(
+            previous_snapshot, now_ts=now_ts, current_flags=all_flags
+        )
+
         gemma_result, codex_result = await asyncio.gather(
             self._call_gemma(
                 metrics=metrics,
-                flags=result["flags"],
+                flags=all_flags,
                 window_days=window_days,
+                previous_analysis=previous_analysis,
             ),
             self._call_codex(
                 metrics=metrics,
-                flags=result["flags"],
+                flags=all_flags,
                 window_days=window_days,
+                previous_analysis=previous_analysis,
             ),
             return_exceptions=True,
         )
@@ -188,14 +298,14 @@ class AnalyzeService:
             user_id=user_id,
             window_days=window_days,
             metrics=metrics,
-            flags=result["flags"],
+            flags=all_flags,
             explanation=explanation_gemma.text or explanation_codex.text,
         )
 
         return AnalyzeResult(
             window_days=window_days,
             metrics=metrics,
-            flags=result["flags"],
+            flags=all_flags,
             explanation_gemma=explanation_gemma,
             explanation_codex=explanation_codex,
             snapshot_id=snapshot_id,
@@ -208,6 +318,7 @@ class AnalyzeService:
         metrics: dict[str, Any],
         flags: list[dict[str, Any]],
         window_days: int,
+        previous_analysis: str = "",
     ) -> ExplainBackendResult:
         if not self._gemma_enabled:
             return ExplainBackendResult(text=None, latency_s=None, error="disabled")
@@ -220,6 +331,7 @@ class AnalyzeService:
                 metrics=metrics,
                 flags=flags,
                 window_days=window_days,
+                previous_analysis=previous_analysis,
             )
         except Exception as exc:
             latency_s = time.monotonic() - started_at
@@ -234,6 +346,7 @@ class AnalyzeService:
         metrics: dict[str, Any],
         flags: list[dict[str, Any]],
         window_days: int,
+        previous_analysis: str = "",
     ) -> ExplainBackendResult:
         if self._codex is None:
             return ExplainBackendResult(text=None, latency_s=None, error="disabled")
@@ -250,6 +363,7 @@ class AnalyzeService:
                 metrics=metrics,
                 flags=flags,
                 window_days=window_days,
+                previous_analysis=previous_analysis,
             )
             text = await self._codex.explain(
                 system,

@@ -32,10 +32,14 @@ class _StubLLM:
         self.calls.append(raw_name)
         return self._canon.get(raw_name, CanonicalizeResult())
 
-    async def explain(self, *, metrics, flags, window_days) -> str:
+    async def explain(
+        self, *, metrics, flags, window_days, previous_analysis: str = ""
+    ) -> str:
         return f"fake explanation for {window_days}d, flags={len(flags)}"
 
-    def render_explain_prompt(self, *, metrics, flags, window_days) -> tuple[str, str]:
+    def render_explain_prompt(
+        self, *, metrics, flags, window_days, previous_analysis: str = ""
+    ) -> tuple[str, str]:
         return "system", f"user {window_days}"
 
 

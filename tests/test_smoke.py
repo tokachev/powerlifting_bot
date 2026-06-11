@@ -15,6 +15,7 @@ from pwrbot.db.connection import bootstrap
 from pwrbot.domain.catalog import load_catalog
 from pwrbot.domain.models import ExercisePayload, SetPayload, WorkoutPayload
 from pwrbot.parsing.pipeline import ParsingPipeline
+from pwrbot.rules.recommendation import NextWorkoutRecommendation
 from pwrbot.services.analyze import (
     AnalyzeResult,
     AnalyzeService,
@@ -130,3 +131,46 @@ def test_format_analysis_no_flags() -> None:
     assert "push" not in out
     assert "window" not in out
     assert "Codex: отключён" not in out
+
+
+def test_format_analysis_with_delta_flags_and_next_workout() -> None:
+    result = AnalyzeResult(
+        window_days=7,
+        metrics={
+            "window": {
+                "total_tonnage_kg": 5500.0,
+                "total_hard_sets": 12,
+                "hard_sets_by_pattern": {"squat": 12},
+            },
+            "delta_7d": {"tonnage_kg": 500.0, "tonnage_pct": 10.0, "hard_sets": 2},
+        },
+        flags=[
+            {
+                "kind": "stagnation",
+                "exercise": "bench_press",
+                "best_e1rm_kg": 120.0,
+                "days_since_best": 25,
+                "last_e1rm_kg": 118.0,
+            },
+            {"kind": "frequency_drop", "workouts_7d": 1, "prior_weekly_avg": 3.0},
+            {"kind": "neglected_pattern", "pattern": "hinge", "prior_working_sets": 6, "days": 14},
+            {"kind": "rep_monotony", "rep_range": "4-6", "share": 0.9},
+        ],
+        explanation_gemma=ExplainBackendResult(text=None, latency_s=None, error="disabled"),
+        explanation_codex=ExplainBackendResult(text=None, latency_s=None, error="disabled"),
+        snapshot_id=1,
+        next_workout=NextWorkoutRecommendation(
+            focus_pattern="pull",
+            title="Следующая тренировка: тяги на спину",
+            rationale=["сбалансировать избыток жимов относительно тяг"],
+            caution_patterns=["squat"],
+        ),
+    )
+    out = format_analysis(result)
+    assert "(+10% к прошлой неделе)" in out
+    assert "стагнация жим лёжа" in out
+    assert "частота упала" in out
+    assert "заброшено: становая/наклоны" in out
+    assert "однообразие повторов: 90% сетов" in out
+    assert "Следующая тренировка: тяги на спину" in out
+    assert "осторожно с: приседания" in out
