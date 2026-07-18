@@ -13,15 +13,17 @@ class BalanceMetrics:
     pull_hard_sets: int
     squat_hard_sets: int
     hinge_hard_sets: int
-    push_pull_ratio: float | None      # push / pull, None if either is 0
+    push_pull_ratio: float | None      # push / pull, None when pull (denominator) is 0
     squat_hinge_ratio: float | None
 
 
 def _ratio(a: int, b: int) -> float | None:
-    if a == 0 and b == 0:
-        return None
+    # None when the denominator is 0 — the ratio is undefined. Returning
+    # float("inf") here used to leak a non-finite value into the analysis
+    # snapshot's metrics_json (invalid JSON: `Infinity`). a == 0, b > 0 stays a
+    # legitimate 0.0 ("no push volume at all").
     if b == 0:
-        return float("inf")
+        return None
     return a / b
 
 

@@ -7,11 +7,29 @@ All timestamps are integer unix seconds.
 from __future__ import annotations
 
 import json
+import math
 import time
 from dataclasses import dataclass
 from typing import Any
 
 import aiosqlite
+
+
+def _finite_or_none(value: Any) -> Any:
+    """Recursively replace non-finite floats (inf/-inf/NaN) with None.
+
+    Guarantees ``json.dumps`` emits spec-valid JSON for analysis snapshots: a
+    stray inf/NaN in the metrics tree would otherwise be serialized as the
+    literal ``Infinity``/``NaN``, which no strict JSON reader (dashboard, tests)
+    can parse back.
+    """
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, dict):
+        return {k: _finite_or_none(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_finite_or_none(v) for v in value]
+    return value
 
 # ------------------------------------------------------------------ DTOs
 
@@ -349,6 +367,19 @@ async def delete_last_workout(conn: aiosqlite.Connection, user_id: int) -> int |
     return workout_id
 
 
+async def delete_workout(
+    conn: aiosqlite.Connection, *, workout_id: int, user_id: int
+) -> bool:
+    """Delete a specific workout scoped to its owner. Returns True if a row was
+    removed. Used by the atomic /edit_last swap, which deletes the old workout
+    by id only after the replacement is safely persisted."""
+    cur = await conn.execute(
+        "DELETE FROM workouts WHERE id = ? AND user_id = ?", (workout_id, user_id)
+    )
+    await conn.commit()
+    return cur.rowcount > 0
+
+
 # ------------------------------------------------------------------ analysis snapshots
 
 
@@ -369,8 +400,8 @@ async def save_snapshot(
             user_id,
             window_days,
             int(time.time()),
-            json.dumps(metrics, ensure_ascii=False),
-            json.dumps(flags, ensure_ascii=False),
+            json.dumps(_finite_or_none(metrics), ensure_ascii=False, allow_nan=False),
+            json.dumps(_finite_or_none(flags), ensure_ascii=False, allow_nan=False),
             explanation,
         ),
     )

@@ -24,8 +24,6 @@ def _ratio_outside_tolerance(
 ) -> bool:
     if ratio is None:
         return False
-    if ratio == float("inf"):
-        return True
     lo = target * (1 - tolerance)
     hi = target * (1 + tolerance)
     return ratio < lo or ratio > hi

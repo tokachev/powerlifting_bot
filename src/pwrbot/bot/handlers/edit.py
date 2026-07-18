@@ -42,6 +42,7 @@ async def cmd_edit_last(
     command: CommandObject,
     conn: aiosqlite.Connection,
     ingest: IngestService,
+    state: FSMContext,
 ) -> None:
     if message.from_user is None:
         return
@@ -50,17 +51,16 @@ async def cmd_edit_last(
         await message.answer("Использование: `/edit_last <новый текст тренировки>`")
         return
     uid = await repo.get_or_create_user(conn, telegram_id=message.from_user.id)
-    deleted = await repo.delete_last_workout(conn, user_id=uid)
-    if deleted is None:
-        await message.answer("Нечего редактировать — тренировок пока нет.")
-        return
     await message.bot.send_chat_action(message.chat.id, "typing")
-    result = await ingest.ingest(conn, user_id=uid, source_text=new_text)
+    # Atomic replace: the old workout is deleted only after the new one parses
+    # cleanly and is persisted, so a parse failure or clarification never loses
+    # the original.
+    result = await ingest.replace_last(conn, user_id=uid, source_text=new_text)
     if result.parse_error:
-        await message.answer(
-            "Удалил старую, но новую не распарсил. "
-            "Попробуй формат `упражнение NxRxW`."
-        )
+        await message.answer(result.parse_error)
+        return
+    if result.pending is not None:
+        await start_clarification(message, state, result.pending)
         return
     await message.answer(
         "Заменил последнюю тренировку.\n\n"

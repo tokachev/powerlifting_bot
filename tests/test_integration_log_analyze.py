@@ -398,6 +398,112 @@ async def test_append_pending_workout_deleted_before_finalize(conn, yaml_config)
     assert "удалена" in final.parse_error
 
 
+async def test_replace_last_swaps_workout_atomically(conn, yaml_config) -> None:
+    """/edit_last happy path: the old workout is replaced, exactly one remains."""
+    catalog = load_catalog(REPO_ROOT / "config" / "exercises.yaml")
+    llm = _StubLLM()
+    _, _, ingest = _make_services(catalog, yaml_config, llm)
+
+    uid = await repo.get_or_create_user(conn, telegram_id=1)
+    first = await ingest.ingest(conn, user_id=uid, source_text="присед 4x5x100")
+    assert first.workout_id > 0
+
+    result = await ingest.replace_last(conn, user_id=uid, source_text="жим 3x8x80")
+    assert result.parse_error is None
+    assert result.pending is None
+    assert result.was_replace is True
+    assert result.workout_id > 0
+
+    row = await (await conn.execute("SELECT COUNT(*) AS c FROM workouts")).fetchone()
+    assert row["c"] == 1
+    last = await repo.get_last_workout(conn, user_id=uid)
+    assert last is not None
+    assert [ex.canonical_name for ex in last.exercises] == ["bench_press"]
+
+
+async def test_replace_last_preserves_original_on_parse_error(conn, yaml_config) -> None:
+    """Non-destructive: an unparseable replacement must NOT delete the original."""
+    catalog = load_catalog(REPO_ROOT / "config" / "exercises.yaml")
+    llm = _StubLLM()  # parse_text raises → regex-miss input becomes a ParseError
+    _, _, ingest = _make_services(catalog, yaml_config, llm)
+
+    uid = await repo.get_or_create_user(conn, telegram_id=1)
+    first = await ingest.ingest(conn, user_id=uid, source_text="присед 4x5x100")
+
+    result = await ingest.replace_last(
+        conn, user_id=uid, source_text="просто мысли вслух без подходов"
+    )
+    assert result.parse_error is not None
+    assert result.workout_id == 0
+
+    # Original workout still present and unchanged — the whole point of the fix.
+    row = await (await conn.execute("SELECT COUNT(*) AS c FROM workouts")).fetchone()
+    assert row["c"] == 1
+    last = await repo.get_last_workout(conn, user_id=uid)
+    assert last is not None
+    assert last.id == first.workout_id
+    assert [ex.canonical_name for ex in last.exercises] == ["back_squat"]
+
+
+async def test_replace_last_with_no_workout(conn, yaml_config) -> None:
+    catalog = load_catalog(REPO_ROOT / "config" / "exercises.yaml")
+    llm = _StubLLM()
+    _, _, ingest = _make_services(catalog, yaml_config, llm)
+
+    uid = await repo.get_or_create_user(conn, telegram_id=1)
+    result = await ingest.replace_last(conn, user_id=uid, source_text="жим 3x8x80")
+    assert result.workout_id == 0
+    assert result.parse_error is not None
+    # Nothing was created.
+    row = await (await conn.execute("SELECT COUNT(*) AS c FROM workouts")).fetchone()
+    assert row["c"] == 0
+
+
+async def test_replace_last_pending_defers_deletion_until_finalize(
+    conn, yaml_config
+) -> None:
+    """Replacement needs clarification → original is kept until finalize, then
+    swapped atomically once the user resolves it."""
+    catalog = load_catalog(REPO_ROOT / "config" / "exercises.yaml")
+    llm = _StubLLM(
+        canon_response_for={
+            "шраги": CanonicalizeResult(canonical_name=None, suggestions=["barbell_row"]),
+        }
+    )
+    _, _, ingest = _make_services(catalog, yaml_config, llm)
+
+    uid = await repo.get_or_create_user(conn, telegram_id=1)
+    first = await ingest.ingest(conn, user_id=uid, source_text="присед 4x5x100")
+
+    pend = await ingest.replace_last(conn, user_id=uid, source_text="шраги 4x10x60")
+    assert pend.pending is not None
+    assert pend.pending.replace_workout_id == first.workout_id
+    # Original NOT deleted yet — deletion is deferred to finalize.
+    row = await (await conn.execute("SELECT COUNT(*) AS c FROM workouts")).fetchone()
+    assert row["c"] == 1
+    still = await repo.get_last_workout(conn, user_id=uid)
+    assert still is not None
+    assert still.id == first.workout_id
+
+    pending = pend.pending
+    idx = pending.unresolved[0].index
+    exercises = list(pending.payload.exercises)
+    exercises[idx] = exercises[idx].model_copy(update={"canonical_name": "barbell_row"})
+    pending = pending.model_copy(
+        update={"payload": pending.payload.model_copy(update={"exercises": exercises})}
+    )
+    final = await ingest.finalize_pending(conn, user_id=uid, pending=pending)
+    assert final.was_replace is True
+    assert final.workout_id > 0
+
+    # Old gone, new persisted — still exactly one workout.
+    row = await (await conn.execute("SELECT COUNT(*) AS c FROM workouts")).fetchone()
+    assert row["c"] == 1
+    last = await repo.get_last_workout(conn, user_id=uid)
+    assert last is not None
+    assert [ex.canonical_name for ex in last.exercises] == ["barbell_row"]
+
+
 async def test_pending_serializes_roundtrip(conn, yaml_config) -> None:
     """PendingClarification must JSON-round-trip for FSM storage."""
     catalog = load_catalog(REPO_ROOT / "config" / "exercises.yaml")

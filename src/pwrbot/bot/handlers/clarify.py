@@ -147,7 +147,12 @@ async def on_pick(
         except Exception:
             await cb.message.answer(result.parse_error)
         return
-    prefix = "Дописал к последней тренировке.\n\n" if result.was_append else ""
+    if result.was_append:
+        prefix = "Дописал к последней тренировке.\n\n"
+    elif result.was_replace:
+        prefix = "Заменил последнюю тренировку.\n\n"
+    else:
+        prefix = ""
     reply = prefix + format_ingest_reply(
         result.payload, result.analysis, result.rm_estimates,
         result.body_weight_kg, result.new_prs,

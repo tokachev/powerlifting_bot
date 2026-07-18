@@ -39,6 +39,11 @@ class PendingClarification(BaseModel):
     ``target_workout_id`` is set when the user invoked /add — finalize_pending
     will then append the resolved payload to that workout instead of creating
     a new one.
+
+    ``replace_workout_id`` is set when the user invoked /edit_last and the new
+    text still needs clarification — finalize_pending persists the resolved
+    replacement and only then deletes that old workout, so a half-finished edit
+    never loses the original. Mutually exclusive with ``target_workout_id``.
     """
 
     source_text: str
@@ -46,6 +51,7 @@ class PendingClarification(BaseModel):
     payload: WorkoutPayload
     unresolved: list[UnresolvedExercise]
     target_workout_id: int | None = None
+    replace_workout_id: int | None = None
 
 
 @dataclass(slots=True)
@@ -59,6 +65,7 @@ class IngestResult:
     parse_error: str | None = None
     pending: PendingClarification | None = None
     was_append: bool = False
+    was_replace: bool = False
 
 
 class IngestService:
@@ -116,6 +123,69 @@ class IngestService:
             payload=payload,
         )
 
+    async def replace_last(
+        self,
+        conn: aiosqlite.Connection,
+        *,
+        user_id: int,
+        source_text: str,
+    ) -> IngestResult:
+        """Full-replace the user's most recent workout with ``source_text``.
+
+        Non-destructive: the old workout is parsed-against first and deleted only
+        once the replacement is safely resolved and persisted. On a parse error
+        the original is left untouched; if the new text needs clarification the
+        deletion is deferred to ``finalize_pending`` (see ``replace_workout_id``).
+        """
+        last = await repo.get_last_workout(conn, user_id=user_id)
+        if last is None:
+            return IngestResult(
+                workout_id=0, payload=None, analysis=None,
+                parse_error="Нечего редактировать — тренировок пока нет.",
+            )
+
+        try:
+            result = await self._pipeline.parse(source_text)
+        except ParseError as exc:
+            log.warning("edit_parse_error", error=str(exc))
+            return IngestResult(
+                workout_id=0, payload=None, analysis=None,
+                parse_error=(
+                    exc.user_message
+                    or "Не смог распарсить новый текст — старая тренировка на месте."
+                ),
+            )
+
+        payload = result.payload
+        performed_at = int(payload.performed_at.timestamp()) if payload.performed_at else 0
+
+        if result.unresolved:
+            log.info("edit_pending_clarification", unresolved=len(result.unresolved))
+            return IngestResult(
+                workout_id=0,
+                payload=payload,
+                analysis=None,
+                pending=PendingClarification(
+                    source_text=source_text,
+                    performed_at=performed_at,
+                    payload=payload,
+                    unresolved=result.unresolved,
+                    replace_workout_id=last.id,
+                ),
+            )
+
+        # Fully resolved → atomic swap: drop the old workout, persist the new one.
+        await repo.delete_workout(conn, workout_id=last.id, user_id=user_id)
+        replaced = await self._persist_and_analyze(
+            conn,
+            user_id=user_id,
+            source_text=source_text,
+            performed_at=performed_at,
+            payload=payload,
+        )
+        replaced.was_replace = True
+        return replaced
+
     async def finalize_pending(
         self,
         conn: aiosqlite.Connection,
@@ -146,6 +216,21 @@ class IngestService:
                 addition_text=pending.source_text,
                 payload=pending.payload,
             )
+        if pending.replace_workout_id is not None:
+            # /edit_last replace flow: the original is still present because its
+            # deletion was deferred until the clarified replacement is ready.
+            await repo.delete_workout(
+                conn, workout_id=pending.replace_workout_id, user_id=user_id
+            )
+            replaced = await self._persist_and_analyze(
+                conn,
+                user_id=user_id,
+                source_text=pending.source_text,
+                performed_at=pending.performed_at,
+                payload=pending.payload,
+            )
+            replaced.was_replace = True
+            return replaced
         return await self._persist_and_analyze(
             conn,
             user_id=user_id,

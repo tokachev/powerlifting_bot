@@ -31,14 +31,16 @@ class TelegramAllowlistMiddleware(BaseMiddleware):
         event: TelegramObject,
         data: dict[str, Any],
     ) -> Any:
-        if not self._allowed_telegram_ids:
-            return await handler(event, data)
-
+        # Fail closed: an empty allowlist denies everyone. A missing or blank
+        # PWRBOT_ALLOWED_TELEGRAM_IDS must NOT turn this single-user bot into an
+        # open one. The production entrypoint also refuses to start with an empty
+        # allowlist (see __main__), but the gate is enforced here too so the
+        # contract holds no matter how the dispatcher is constructed.
         from_user = getattr(event, "from_user", None)
         if from_user is None and isinstance(event, CallbackQuery):
             from_user = event.from_user
         user_id = getattr(from_user, "id", None)
-        if user_id in self._allowed_telegram_ids:
+        if user_id is not None and user_id in self._allowed_telegram_ids:
             return await handler(event, data)
 
         if isinstance(event, CallbackQuery):

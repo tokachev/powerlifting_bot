@@ -47,9 +47,19 @@ def apply_warmup_by_weight(
 def resolve_exercise(
     ex: ExercisePayload, catalog: Catalog
 ) -> ExercisePayload:
-    """Try to fill canonical_name from the catalog. LLM fallback happens elsewhere."""
+    """Try to fill canonical_name from the catalog. LLM fallback happens elsewhere.
+
+    Any incoming ``canonical_name`` is trusted only if it is an actual catalog
+    key. The LLM parse path (``llm_parser.parse_text``) can hallucinate a name
+    that isn't in the catalog; left unchecked it would be persisted verbatim and
+    silently resolve to ``movement_pattern=None``. An unknown value is dropped so
+    the name flows back through catalog resolution (and LLM canonicalize /
+    clarification) like any other unresolved exercise.
+    """
     if ex.canonical_name:
-        return ex
+        if catalog.by_canonical(ex.canonical_name) is not None:
+            return ex
+        ex = ex.model_copy(update={"canonical_name": None})
     entry = catalog.resolve(ex.raw_name)
     if entry is None:
         return ex
@@ -59,10 +69,8 @@ def resolve_exercise(
 def movement_pattern_for(canonical_name: str | None, catalog: Catalog) -> str | None:
     if canonical_name is None:
         return None
-    for e in catalog._entries:
-        if e.canonical_name == canonical_name:
-            return e.movement_pattern
-    return None
+    entry = catalog.by_canonical(canonical_name)
+    return entry.movement_pattern if entry is not None else None
 
 
 def _apply_bilateral_dumbbell(

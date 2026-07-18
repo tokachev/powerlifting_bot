@@ -186,3 +186,16 @@ async def test_telegram_allowlist_allows_owner() -> None:
     assert result == "ok"
     handler.assert_awaited_once()
     event.answer.assert_not_awaited()
+
+
+async def test_telegram_allowlist_empty_denies_everyone() -> None:
+    # Fail closed: an empty allowlist must NOT open the bot to the world.
+    middleware = TelegramAllowlistMiddleware(allowed_telegram_ids=set())
+    handler = AsyncMock()
+    event = SimpleNamespace(from_user=SimpleNamespace(id=417753103), answer=AsyncMock())
+
+    result = await middleware(handler, event, {})
+
+    assert result is None
+    handler.assert_not_awaited()
+    event.answer.assert_awaited_once()

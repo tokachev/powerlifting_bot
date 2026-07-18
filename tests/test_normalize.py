@@ -14,7 +14,12 @@ from __future__ import annotations
 from pwrbot.config import YamlConfig
 from pwrbot.domain.catalog import Catalog, CatalogEntry
 from pwrbot.domain.models import ExercisePayload, SetPayload, WorkoutPayload
-from pwrbot.parsing.normalize import apply_warmup_by_weight, normalize_workout
+from pwrbot.parsing.normalize import (
+    apply_warmup_by_weight,
+    movement_pattern_for,
+    normalize_workout,
+    resolve_exercise,
+)
 
 
 def _s(weight_kg: float, is_warmup: bool = False, reps: int = 10) -> SetPayload:
@@ -231,3 +236,45 @@ def test_unresolved_exercise_not_doubled(yaml_config: YamlConfig):
     result = normalize_workout(payload, catalog, yaml_config)
 
     assert result.exercises[0].sets[0].weight_kg == 20.0
+
+
+# ── LLM canonical_name validation against the catalog ──────────────────────
+
+def test_hallucinated_canonical_dropped_and_reresolved():
+    """The LLM parse path can invent a canonical_name absent from the catalog.
+    It must be dropped and re-resolved from raw_name, not persisted verbatim."""
+    catalog = _make_catalog(_barbell_entry())  # canonical bench_press / alias "жим лежа"
+    ex = ExercisePayload(
+        raw_name="жим лежа",
+        canonical_name="incline_smith_press_9000",  # not a catalog key
+        sets=[SetPayload(reps=5, weight_kg=100.0)],
+    )
+    resolved = resolve_exercise(ex, catalog)
+    assert resolved.canonical_name == "bench_press"
+
+
+def test_hallucinated_canonical_cleared_when_unresolvable():
+    """Bogus canonical + unresolvable raw_name → canonical cleared to None so it
+    flows on to LLM canonicalize / clarification; movement_pattern stays None."""
+    catalog = _make_catalog(_barbell_entry())
+    ex = ExercisePayload(
+        raw_name="совершенно неизвестное движение",
+        canonical_name="totally_made_up",
+        sets=[SetPayload(reps=5, weight_kg=50.0)],
+    )
+    resolved = resolve_exercise(ex, catalog)
+    assert resolved.canonical_name is None
+    assert movement_pattern_for(resolved.canonical_name, catalog) is None
+
+
+def test_valid_canonical_is_trusted():
+    """A canonical_name that IS a catalog key is kept as-is."""
+    catalog = _make_catalog(_barbell_entry())
+    ex = ExercisePayload(
+        raw_name="жим лежа",
+        canonical_name="bench_press",
+        sets=[SetPayload(reps=5, weight_kg=100.0)],
+    )
+    resolved = resolve_exercise(ex, catalog)
+    assert resolved.canonical_name == "bench_press"
+    assert movement_pattern_for(resolved.canonical_name, catalog) == "push"

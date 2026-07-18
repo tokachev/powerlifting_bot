@@ -26,7 +26,16 @@ def test_balance_none_when_both_zero() -> None:
     assert b.push_pull_ratio is None
 
 
-def test_balance_inf_when_denominator_zero() -> None:
+def test_balance_none_when_denominator_zero() -> None:
+    # Denominator 0 → undefined ratio → None (never float("inf"), which would
+    # serialize as invalid JSON `Infinity` in the analysis snapshot).
     m = VolumeMetrics(hard_sets_by_pattern={"push": 5, "pull": 0})
     b = balance.compute(m)
-    assert b.push_pull_ratio == float("inf")
+    assert b.push_pull_ratio is None
+
+
+def test_balance_zero_when_numerator_zero() -> None:
+    # No push but some pull → a legitimate 0.0, not None.
+    m = VolumeMetrics(hard_sets_by_pattern={"push": 0, "pull": 5})
+    b = balance.compute(m)
+    assert b.push_pull_ratio == 0.0
